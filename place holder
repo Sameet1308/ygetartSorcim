@@ -1,43 +1,60 @@
 import requests
 
-# Update these variables according to your setup
-base_url = 'http://your-microstrategy-server.com/MicroStrategyLibrary/api'
-authToken = 'your_auth_token'
+# Configure the connection to MicroStrategy REST API
+base_url = 'https://your-company-microstrategy-web.com/MicroStrategyLibrary/api'
+username = 'your_username'
+password = 'your_password'
 project_id = 'your_project_id'
 
-headers = {
-    'X-MSTR-AuthToken': authToken,
-    'Accept': 'application/json',
-    'Content-Type': 'application/json'
+# Authentication endpoint
+auth_endpoint = f"{base_url}/auth/login"
+
+# Login credentials payload
+auth_payload = {
+    "username": username,
+    "password": password,
+    "loginMode": 1  # Standard login mode
 }
 
-# Function to fetch cubes from a specific project
-def fetch_cubes(base_url, project_id, headers):
-    cubes_endpoint = f"{base_url}/projects/{project_id}/cubes"
-    response = requests.get(cubes_endpoint, headers=headers)
-    if response.status_code == 200:
-        return response.json()
-    else:
-        print(f"Error fetching cubes: {response.status_code} - {response.text}")
-        return []
+# Headers for JSON response
+headers = {
+    'Content-Type': 'application/json',
+    'Accept': 'application/json'
+}
 
-# Function to list all projects to verify project ID
-def list_projects(base_url, headers):
-    projects_endpoint = f"{base_url}/projects"
-    response = requests.get(projects_endpoint, headers=headers)
-    if response.status_code == 200:
-        return response.json()
-    else:
-        print(f"Error fetching projects: {response.status_code} - {response.text}")
-        return []
+# Authenticate and get the authToken
+try:
+    response = requests.post(auth_endpoint, json=auth_payload, headers=headers)
+    response.raise_for_status()  # Checks if the request was successful
+    authToken = response.headers.get('X-MSTR-AuthToken')
+    cookies = response.cookies
+    print("Authentication successful!")
+except requests.exceptions.RequestException as e:
+    print(f"Failed to authenticate: {e}")
+    exit()
 
-# Main execution
-print("Available Projects:")
-projects = list_projects(base_url, headers)
-for project in projects:
-    print(project.get('id'), project.get('name'))
+# Set up headers with the received authToken
+headers['X-MSTR-AuthToken'] = authToken
 
-print("\nFetching cubes for Project ID:", project_id)
-cubes = fetch_cubes(base_url, project_id, headers)
-for cube in cubes:
-    print(cube.get('id'), cube.get('name'))
+# Endpoint to fetch cubes for a specific project
+cubes_endpoint = f"{base_url}/projects/{project_id}/cubes"
+
+# Fetch cubes
+try:
+    cubes_response = requests.get(cubes_endpoint, headers=headers)
+    cubes_response.raise_for_status()  # Checks if the request was successful
+    cubes = cubes_response.json()
+    print("Cubes fetched successfully!")
+    for cube in cubes:
+        print(f"Cube ID: {cube['id']}, Cube Name: {cube['name']}")
+except requests.exceptions.RequestException as e:
+    print(f"Failed to retrieve cubes: {e}")
+
+# Logout (recommended to close the session)
+logout_endpoint = f"{base_url}/auth/logout"
+try:
+    logout_response = requests.post(logout_endpoint, headers=headers, cookies=cookies)
+    logout_response.raise_for_status()  # Checks if the request was successful
+    print("Logged out successfully.")
+except requests.exceptions.RequestException as e:
+    print(f"Failed to log out: {e}")
