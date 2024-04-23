@@ -5,26 +5,31 @@ from requests.packages.urllib3.exceptions import InsecureRequestWarning
 # Suppress only the single InsecureRequestWarning from urllib3
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
-# Server details
+# Server and authentication details
 base_url = 'http://your-microstrategy-server.com/MicroStrategyLibrary/api'
 username = 'your_username'
 password = 'your_password'
+headers = {'Content-Type': 'application/json'}
 
-# Authenticate
 def authenticate():
+    """Authenticate and return authToken and cookies if successful."""
     auth_endpoint = f"{base_url}/auth/login"
     auth_payload = {"username": username, "password": password}
-    headers = {'Content-Type': 'application/json', 'Accept': 'application/json'}
     response = requests.post(auth_endpoint, json=auth_payload, headers=headers, verify=False)
+    print(f"HTTP Status: {response.status_code}")
+    print("Response Headers:", response.headers)
+    print("Response Body:", response.text)
     if response.status_code == 200:
+        print("Authentication Successful")
         authToken = response.headers.get('X-MSTR-AuthToken')
         cookies = response.cookies
         return authToken, cookies
     else:
-        raise Exception("Authentication Failed")
+        print("Authentication Failed")
+        exit()
 
-# Fetch projects
 def fetch_projects(authToken):
+    """Fetch projects and return their details."""
     projects_endpoint = f"{base_url}/projects"
     headers = {'X-MSTR-AuthToken': authToken, 'Accept': 'application/json'}
     response = requests.get(projects_endpoint, headers=headers, verify=False)
@@ -33,8 +38,8 @@ def fetch_projects(authToken):
     else:
         raise Exception("Failed to retrieve projects")
 
-# Fetch cubes by project
 def fetch_cubes(authToken, project_id):
+    """Fetch and return cube details for a given project."""
     cubes_endpoint = f"{base_url}/projects/{project_id}/cubes"
     headers = {'X-MSTR-AuthToken': authToken, 'Accept': 'application/json'}
     response = requests.get(cubes_endpoint, headers=headers, verify=False)
@@ -43,7 +48,7 @@ def fetch_cubes(authToken, project_id):
     else:
         raise Exception(f"Failed to retrieve cubes for project {project_id}")
 
-# Main script
+# Main execution
 try:
     authToken, cookies = authenticate()
     projects = fetch_projects(authToken)
@@ -58,7 +63,7 @@ try:
             cube_type = cube.get('type')
             # Filter for cube types 779 or 776
             if cube_type in [779, 776]:
-                folder_name = cube.get('folderName', 'N/A')  # Assuming 'folderName' key holds the folder name
+                folder_name = cube.get('folderName', 'N/A')
                 cube_name = cube.get('name')
                 cube_id = cube.get('id')
                 cubes_info.append({
