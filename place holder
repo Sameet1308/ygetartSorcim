@@ -1,0 +1,81 @@
+import requests
+import pandas as pd
+from requests.packages.urllib3.exceptions import InsecureRequestWarning
+
+# Suppress only the single InsecureRequestWarning from urllib3
+requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
+
+# Server details
+base_url = 'http://your-microstrategy-server.com/MicroStrategyLibrary/api'
+username = 'your_username'
+password = 'your_password'
+
+# Endpoint for authentication
+auth_endpoint = f"{base_url}/auth/login"
+
+# Login payload
+auth_payload = {
+    "username": username,
+    "password": password
+}
+
+# Headers
+headers = {
+    'Content-Type': 'application/json',
+    'Accept': 'application/json'
+}
+
+# Authenticate and get the authToken, with verify=False to bypass SSL verification
+try:
+    response = requests.post(auth_endpoint, json=auth_payload, headers=headers, verify=False)
+    response.raise_for_status()  # Raises an HTTPError for bad requests
+    authToken = response.headers.get('X-MSTR-AuthToken')
+    if not authToken:
+        print("Authentication failed, no token received.")
+        exit()
+    cookies = response.cookies
+    print("Authentication successful!")
+except requests.exceptions.RequestException as e:
+    print(f"Failed to authenticate: {e}")
+    exit()
+
+# Endpoint to list projects
+projects_endpoint = f"{base_url}/projects"
+
+# Fetch projects, with verify=False to bypass SSL verification
+try:
+    projects_response = requests.get(projects_endpoint, headers={
+        'X-MSTR-AuthToken': authToken,
+        'Accept': 'application/json'
+    }, cookies=cookies, verify=False)
+    projects_response.raise_for_status()
+    projects_data = projects_response.json()
+
+    # Extracting project data
+    projects_info = []
+    for project in projects_data:
+        project_id = project.get('id', 'N/A')
+        project_name = project.get('name', 'N/A')
+        project_guid = project.get('extId', 'N/A')  # Assuming 'extId' is where GUID is stored
+        projects_info.append({
+            "Project ID": project_id,
+            "Project Name": project_name,
+            "Project GUID": project_guid
+        })
+
+    # Creating DataFrame
+    df_projects = pd.DataFrame(projects_info)
+    print("Projects DataFrame created successfully:")
+    print(df_projects)
+
+except requests.exceptions.RequestException as e:
+    print(f"Failed to retrieve projects: {e}")
+
+# Logout (optional but recommended), with verify=False to bypass SSL verification
+logout_endpoint = f"{base_url}/auth/logout"
+try:
+    logout_response = requests.post(logout_endpoint, headers={'X-MSTR-AuthToken': authToken}, cookies=cookies, verify=False)
+    logout_response.raise_for_status()
+    print("Logged out successfully.")
+except requests.exceptions.RequestException as e:
+    print(f"Failed to log out: {e}")
