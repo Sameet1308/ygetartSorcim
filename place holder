@@ -1,25 +1,88 @@
+import requests
+import pandas as pd
+from requests.packages.urllib3.exceptions import InsecureRequestWarning
+
+# Suppress only the single InsecureRequestWarning from urllib3
+requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
+
+# Server details
+base_url = 'http://your-microstrategy-server.com/MicroStrategyLibrary/api'
+username = 'your_username'
+password = 'your_password'
+
+# Headers
+headers = {
+    'Content-Type': 'application/json',
+    'Accept': 'application/json'
+}
+
+# Authenticate and get the authToken
 def authenticate():
-    """Authenticate and return authToken and cookies if successful."""
     auth_endpoint = f"{base_url}/auth/login"
     auth_payload = {"username": username, "password": password}
     response = requests.post(auth_endpoint, json=auth_payload, headers=headers, verify=False)
-    
-    print(f"HTTP Status: {response.status_code}")
-    print("Response Headers:", response.headers)
-    print("Response Body:", response.text)
-    
-    if response.status_code == 200:
-        authToken = response.headers.get('X-MSTR-AuthToken')
-        if authToken:
-            print("Authentication Successful")
-            cookies = response.cookies
-            return authToken, cookies
-        else:
-            print("Authentication token not found in the response.")
-            exit()
-    elif response.status_code == 204:
-        print("No content returned; check if the endpoint is correct and expects POST data.")
-        exit()
+    if response.status_code == 200 and 'X-MSTR-AuthToken' in response.headers:
+        print("Authentication successful!")
+        return response.headers['X-MSTR-AuthToken'], response.cookies
     else:
-        print("Authentication Failed")
+        print("Authentication failed.")
+        print(f"HTTP Status: {response.status_code}")
+        print("Response Body:", response.text)
         exit()
+
+# Fetch projects
+def fetch_projects(authToken, cookies):
+    projects_endpoint = f"{base_url}/projects"
+    response = requests.get(projects_endpoint, headers={'X-MSTR-AuthToken': authToken}, cookies=cookies, verify=False)
+    if response.status_code == 200:
+        return response.json()
+    else:
+        print(f"Failed to retrieve projects: {response.status_code}")
+        exit()
+
+# Fetch cubes for each project
+def fetch_cubes(authToken, cookies, project_id):
+    cubes_endpoint = f"{base_url}/projects/{project_id}/cubes"
+    response = requests.get(cubes_endpoint, headers={'X-MSTR-AuthToken': authToken}, cookies=cookies, verify=False)
+    if response.status_code == 200:
+        return response.json()
+    else:
+        print(f"Failed to retrieve cubes for project {project_id}: {response.status_code}")
+        return []
+
+# Main script
+try:
+    authToken, cookies = authenticate()
+    projects = fetch_projects(authToken, cookies)
+    cubes_info = []
+
+    for project in projects:
+        project_id = project.get('id')
+        project_name = project.get('name')
+        cubes = fetch_cubes(authToken, cookies, project_id)
+
+        for cube in cubes:
+            cube_type = cube.get('type')
+            if cube_type in [776, 779]:  # Filtering for cube types 779 or 776
+                cubes_info.append({
+                    "Project ID": project_id,
+                    "Project Name": project_name,
+                    "Cube ID": cube.get('id'),
+                    "Cube Name": cube.get('name'),
+                    "Cube Type": cube_type
+                })
+
+    # Creating DataFrame
+    df_cubes = pd.DataFrame(cubes_info)
+    print("Cubes DataFrame created successfully:")
+    print(df_cubes)
+
+finally:
+    # Logout (recommended)
+    logout_endpoint = f"{base_url}/auth/logout"
+    logout_response = requests.post(logout_endpoint, headers={'X-MSTR-AuthToken': authToken}, cookies=cookies, verify=False)
+    if logout_response.status_code == 204:
+        print("Logged out successfully.")
+    else:
+        print(f"Failed to log out: {logout_response.status_code}")
+
