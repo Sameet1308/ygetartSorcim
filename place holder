@@ -3,47 +3,43 @@ import pandas as pd
 
 # Server details
 base_url = 'http://your-microstrategy-server.com/MicroStrategyLibrary/api'
-username = 'your_username'
-password = 'your_password'
+authToken = 'your_auth_token'  # This should be set with the actual authToken obtained from login
+project_id = 'your_project_id'  # Set this to the ID of the project you want to query
 
 # Headers
 headers = {
-    'Content-Type': 'application/json',
+    'X-MSTR-AuthToken': authToken,
     'Accept': 'application/json'
 }
 
-def authenticate(base_url, username, password):
-    """Authenticate with the MSTR server and return the authToken and cookies."""
-    auth_endpoint = f"{base_url}/auth/login"
-    auth_payload = {"username": username, "password": password}
-    response = requests.post(auth_endpoint, json=auth_payload, headers=headers, verify=False)
-    
-    if response.status_code == 200 and 'X-MSTR-AuthToken' in response.headers:
-        authToken = response.headers['X-MSTR-AuthToken']
-        cookies = response.cookies
-        return authToken, cookies
+# Fetch cubes for a specific project
+def fetch_cubes(project_id):
+    cubes_endpoint = f"{base_url}/projects/{project_id}/cubes"
+    response = requests.get(cubes_endpoint, headers=headers)
+    if response.status_code == 200:
+        return response.json()
     else:
-        raise Exception(f"Authentication failed with status code {response.status_code}: {response.text}")
+        print(f"Failed to retrieve cubes for project {project_id}: {response.status_code}")
+        print("Response:", response.text)
+        return []
+
+# Process and display cube information
+def process_cubes(cubes_data):
+    cubes_info = []
+    for cube in cubes_data:
+        cube_id = cube.get('id')
+        cube_name = cube.get('name')
+        cube_type = cube.get('type')  # Cube type as per your API documentation (if available)
+        cubes_info.append({
+            "Cube ID": cube_id,
+            "Cube Name": cube_name,
+            "Cube Type": cube_type
+        })
+    return cubes_info
 
 # Main script
-try:
-    authToken, cookies = authenticate(base_url, username, password)
-    print("Authentication successful!")
-
-    # Fetch projects
-    projects_endpoint = f"{base_url}/projects"
-    projects_response = requests.get(projects_endpoint, headers={'X-MSTR-AuthToken': authToken}, cookies=cookies, verify=False)
-    if projects_response.status_code != 200:
-        raise Exception(f"Failed to retrieve projects with status code {projects_response.status_code}: {projects_response.text}")
-
-    # Create DataFrame from projects data
-    projects_data = projects_response.json()
-    df_projects = pd.DataFrame(projects_data)
-    df_projects = df_projects.rename(columns={'id': 'Project ID', 'name': 'Project Name'})
-    df_projects['Unique ID'] = pd.RangeIndex(start=1, stop=len(df_projects) + 1, step=1)
-
-    print("Projects DataFrame created successfully:")
-    print(df_projects)
-
-except Exception as e:
-    print(e)
+cubes_data = fetch_cubes(project_id)
+cubes_info = process_cubes(cubes_data)
+df_cubes = pd.DataFrame(cubes_info)
+print("Cubes DataFrame created successfully:")
+print(df_cubes)
