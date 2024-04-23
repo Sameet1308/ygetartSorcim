@@ -1,45 +1,43 @@
 import requests
-import pandas as pd
 
-# Server details
+# Update these variables according to your setup
 base_url = 'http://your-microstrategy-server.com/MicroStrategyLibrary/api'
-authToken = 'your_auth_token'  # This should be set with the actual authToken obtained from login
-project_id = 'your_project_id'  # Set this to the ID of the project you want to query
+authToken = 'your_auth_token'
+project_id = 'your_project_id'
 
-# Headers
 headers = {
     'X-MSTR-AuthToken': authToken,
-    'Accept': 'application/json'
+    'Accept': 'application/json',
+    'Content-Type': 'application/json'
 }
 
-# Fetch cubes for a specific project
-def fetch_cubes(project_id):
+# Function to fetch cubes from a specific project
+def fetch_cubes(base_url, project_id, headers):
     cubes_endpoint = f"{base_url}/projects/{project_id}/cubes"
     response = requests.get(cubes_endpoint, headers=headers)
     if response.status_code == 200:
         return response.json()
     else:
-        print(f"Failed to retrieve cubes for project {project_id}: {response.status_code}")
-        print("Response:", response.text)
+        print(f"Error fetching cubes: {response.status_code} - {response.text}")
         return []
 
-# Process and display cube information
-def process_cubes(cubes_data):
-    cubes_info = []
-    for cube in cubes_data:
-        cube_id = cube.get('id')
-        cube_name = cube.get('name')
-        cube_type = cube.get('type')  # Cube type as per your API documentation (if available)
-        cubes_info.append({
-            "Cube ID": cube_id,
-            "Cube Name": cube_name,
-            "Cube Type": cube_type
-        })
-    return cubes_info
+# Function to list all projects to verify project ID
+def list_projects(base_url, headers):
+    projects_endpoint = f"{base_url}/projects"
+    response = requests.get(projects_endpoint, headers=headers)
+    if response.status_code == 200:
+        return response.json()
+    else:
+        print(f"Error fetching projects: {response.status_code} - {response.text}")
+        return []
 
-# Main script
-cubes_data = fetch_cubes(project_id)
-cubes_info = process_cubes(cubes_data)
-df_cubes = pd.DataFrame(cubes_info)
-print("Cubes DataFrame created successfully:")
-print(df_cubes)
+# Main execution
+print("Available Projects:")
+projects = list_projects(base_url, headers)
+for project in projects:
+    print(project.get('id'), project.get('name'))
+
+print("\nFetching cubes for Project ID:", project_id)
+cubes = fetch_cubes(base_url, project_id, headers)
+for cube in cubes:
+    print(cube.get('id'), cube.get('name'))
