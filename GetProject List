@@ -24,33 +24,42 @@ headers = {
     'Accept': 'application/json'
 }
 
-# Authenticate and get the authToken, with verify=False to bypass SSL verification
-response = requests.post(auth_endpoint, json=auth_payload, headers=headers, verify=False)
-if response.status_code == 200:
-    authToken = response.headers['X-MSTR-AuthToken']
+# Try to authenticate and get the authToken, with verify=False to bypass SSL verification
+try:
+    response = requests.post(auth_endpoint, json=auth_payload, headers=headers, verify=False)
+    response.raise_for_status()  # Raises an HTTPError for bad requests
+    authToken = response.headers.get('X-MSTR-AuthToken')
+    if not authToken:
+        print("Authentication failed, no token received.")
+        exit()
     cookies = response.cookies
     print("Authentication successful!")
-else:
-    print("Failed to authenticate")
+except requests.exceptions.RequestException as e:
+    print(f"Failed to authenticate: {e}")
     exit()
 
 # Endpoint to list projects
 projects_endpoint = f"{base_url}/projects"
 
-# Fetch projects, with verify=False to bypass SSL verification
-projects_response = requests.get(projects_endpoint, headers={
-    'X-MSTR-AuthToken': authToken,
-    'Accept': 'application/json'
-}, cookies=cookies, verify=False)
-
-if projects_response.status_code == 200:
+# Try to fetch projects, with verify=False to bypass SSL verification
+try:
+    projects_response = requests.get(projects_endpoint, headers={
+        'X-MSTR-AuthToken': authToken,
+        'Accept': 'application/json'
+    }, cookies=cookies, verify=False)
+    projects_response.raise_for_status()
     projects = projects_response.json()
     print("Projects retrieved successfully:")
     for project in projects:
         print(f"Project ID: {project['id']}, Name: {project['name']}")
-else:
-    print("Failed to retrieve projects")
+except requests.exceptions.RequestException as e:
+    print(f"Failed to retrieve projects: {e}")
 
 # Logout (optional but recommended), with verify=False to bypass SSL verification
 logout_endpoint = f"{base_url}/auth/logout"
-requests.post(logout_endpoint, headers={'X-MSTR-AuthToken': authToken}, cookies=cookies, verify=False)
+try:
+    logout_response = requests.post(logout_endpoint, headers={'X-MSTR-AuthToken': authToken}, cookies=cookies, verify=False)
+    logout_response.raise_for_status()
+    print("Logged out successfully.")
+except requests.exceptions.RequestException as e:
+    print(f"Failed to log out: {e}")
