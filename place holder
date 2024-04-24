@@ -1,20 +1,79 @@
-from mstrio.connection import Connection
-from mstrio.project_objects import Cube
+import pandas as pd
+from mstrio.project_objects import list_olap_cubes, OlapCube, SuperCube, list_all_cubes, list_reports, Report
+from mstrio import connection  # Import connection directly
 
-# Connect to your MicroStrategy environment
-base_url = 'https://your-microstrategy-server.com/MicroStrategyLibrary/api'
-username = 'your_username'
-password = 'your_password'
-project_name = 'your_project_name'
+# Function to export data to CSV
+def export_to_csv(level_id, df):
+    df.to_csv(f"{level_id}.csv", index=False, encoding='utf-8', sep=",", quoting=csv.QUOTE_ALL, escapechar="\\", header=True)
 
-conn = Connection(base_url=base_url, username=username, password=password, project_name=project_name, login_mode=1)
+# Function to remove duplicates (optional)
+def unique_list(alist):
+    alist.sort()
+    alist = list(alist for alist, _ in itertools.groupby(alist))
+    return alist
 
-# List cubes in the project
-cubes = Cube.list(connection=conn)
+# Server URL, username, and password (replace with your credentials)
+SERVER_URL = "https://env-XXXXXX.customer.cloud.microstrategy.com/MicroStrategyLibrary"
+USERNAME = "mstr"
+PASSWORD = getpass.getpass(prompt='Password ')
 
-# Print details about each cube
-for cube in cubes:
-    print(f"Cube ID: {cube.id}, Cube Name: {cube.name}")
+# Connect to MicroStrategy Library Server
+conn = connection.Connection(SERVER_URL, username=USERNAME, password=PASSWORD)
+conn.connect()
 
-# Disconnect (optional, good practice for session management)
-conn.close()
+# Get list of projects
+projects = list_projects(conn)
+
+# Initialize empty lists for storing data
+tables_list, columns_list = [], []
+
+# Iterate through each project
+for project in projects:
+  project_name = project.get('name')
+  print(f"\nProcessing project: {project_name}")
+
+  # List cubes (all subtypes) for the current project
+  cubes_list = list_all_cubes(connection=conn, project_id=project.get('id'))
+
+  # Process cubes (can be further filtered if needed)
+  for cube in cubes_list:
+      cube_id, cube_name, cube_subtype = cube["id"], cube["name"], cube["subtype"]
+      print(f"\n{'='*5}| Analyzing cube: {cube_name} - id: {cube_id} |{'='*30}")
+
+      try:
+          current_cube = OlapCube(conn, cube_id)
+          sql_view = current_cube.export_sql_view()
+      except:
+          print(f"Failed to get the SQL for cube {cube_name} {cube_id}")
+          sql_view = ""
+
+      if sql_view:
+          pattern = r"(select\s+.*?)\n\n"
+          matches = re.findall(pattern, sql_view, flags=re.DOTALL | re.IGNORECASE)
+          for match in matches:
+              match = " ".join(match.split())
+              parser = Parser(match)
+              for table in parser.tables:
+                  if not table.startswith(("ZZ", "*")):
+                      tables_list.append([project_name, cube_id, cube_name, cube_subtype, table])
+              for column in parser.columns:
+                  if not column.startswith(("ZZ", "*")):
+                      columns_list.append([project_name, cube_id, cube_name, cube_subtype, column])
+  # End of cube processing for this project
+
+# Disconnect from MicroStrategy Server
+conn.disconnect()
+
+# Optional: Remove duplicates (uncomment if needed)
+# tables_list = unique_list(tables_list)
+# columns_list = unique_list(columns_list)
+
+# Create DataFrames and export to CSV
+headers = ["Project Name", "Cube ID", "Cube Name", "Cube Suntype", "Table Name"]
+df = pd.DataFrame(tables_list, columns=headers)
+headers = ["Project Name", "Cube ID", "Cube Name", "Cube Subtype", "Column Name"]
+dfc = pd.DataFrame(columns_list, columns=headers)
+export_to_csv("tables", df)
+export_to_csv("columns", dfc)
+
+print("Process completed!")
