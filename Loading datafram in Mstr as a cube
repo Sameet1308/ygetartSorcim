@@ -1,0 +1,30 @@
+from mstrio.connection import Connection
+from mstrio.project_objects.datasets import SuperCube
+import pandas as pd
+
+# Connection details
+base_url = 'https://your-microstrategy-url.com/MicroStrategyLibrary/api'
+username = 'your_username'
+password = 'your_password'
+project_name = 'your_project_name'
+
+# Connect to MicroStrategy
+conn = Connection(base_url, username, password, project_name=project_name, login_mode=1)
+
+# Example DataFrame
+data = {
+    'Category': ['A', 'B', 'C'],
+    'Sales': [100, 150, 200],
+    'Profit': [20, 30, 50]
+}
+df = pd.DataFrame(data)
+
+# Create a cube in MicroStrategy
+cube = SuperCube(connection=conn, name='New Cube from DataFrame')
+cube.add_table(data_frame=df, update_policy='replace')
+
+# Upload the cube
+cube.create()
+
+# Disconnect the session
+conn.close()
