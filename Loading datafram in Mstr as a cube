@@ -21,7 +21,7 @@ df = pd.DataFrame(data)
 
 # Create a cube in MicroStrategy
 cube = SuperCube(connection=conn, name='New Cube from DataFrame')
-cube.add_table(data_frame=df, update_policy='replace')
+cube.add_table(data_frame=df,name = 'primary Dataset',update_policy='replace')
 
 # Upload the cube
 cube.create()
