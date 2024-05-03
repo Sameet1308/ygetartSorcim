@@ -2,11 +2,9 @@ from mstrio.connection import Connection
 from mstrio.project import list_projects
 from mstrio.project_objects import list_all_cubes, OlapCube
 import getpass
-import itertools
-import re
 import pandas as pd
-from sql_metadata import Parser
 import csv
+import re
 
 # Define server URL and credentials
 SERVER_URL = "https://env-XXXXXX.customer.cloud.microstrategy.com/MicroStrategyLibrary"
@@ -16,6 +14,10 @@ PASSWORD = getpass.getpass(prompt='Password ')
 def export_to_csv(filename, df):
     df.to_csv(f"{filename}.csv", index=False, encoding='utf-8', sep=",", quoting=csv.QUOTE_ALL, escapechar="\\")
 
+# Enhanced Regex patterns to capture more complex SQL queries
+table_pattern = re.compile(r'\bfrom\b\s+([\w\.\[\]]+)|\bjoin\b\s+([\w\.\[\]]+)', re.IGNORECASE)
+column_pattern = re.compile(r'\bselect\b(.*?)\bfrom\b', re.IGNORECASE | re.DOTALL)
+
 # Lists to store results
 detailed_results = []
 sql_results = []
@@ -24,9 +26,6 @@ sql_results = []
 conn = Connection(SERVER_URL, username=USERNAME, password=PASSWORD)
 conn.connect()
 projects = list_projects(connection=conn)
-
-# Pattern to extract SQL queries
-pattern = r"(select\s+.*?)\n\n"
 
 for project in projects:
     # Connect to each project individually
@@ -38,38 +37,33 @@ for project in projects:
     # List OLAP Cubes in the current project
     cubes_as_dicts = list_all_cubes(connection=proj_conn, to_dictionary=True)
 
-    # Filter cubes by subtype if necessary (e.g., 776 and 779)
-    cubes_subtypes = [776, 779]
-    cubes_as_dicts = [cu for cu in cubes_as_dicts if cu['subtype'] in cubes_subtypes]
-
-    for i, cube in enumerate(cubes_as_dicts):
-        cube_id, cube_name, cube_subtype = cube["id"], cube["name"], cube["subtype"]
-        print(f"\n{'='*5} {i+1} / {len(cubes_as_dicts)} - {cube_name} - ID: {cube_id} {'='*30}")
+    for cube in cubes_as_dicts:
+        cube_id, cube_name = cube["id"], cube["name"]
+        print(f"\nProcessing Cube: {cube_name} (ID: {cube_id})")
 
         try:
             current_cube = OlapCube(connection=proj_conn, id=cube_id)
             sql_view = current_cube.export_sql_view()
             if sql_view:
+                # Store the complete SQL view
                 sql_results.append([
                     project.name, cube_id, cube_name, sql_view
                 ])
+
+                # Extract tables
+                tables = set(match[0] or match[1] for match in table_pattern.findall(sql_view))
+
+                # Extract columns
+                column_extract = column_pattern.search(sql_view)
+                columns = set(column.strip() for column in re.split(r',\s*(?![^()]*\))', column_extract.group(1))) if column_extract else set()
+
+                for table in tables:
+                    for column in columns:
+                        detailed_results.append([
+                            project.name, cube_id, cube_name, table, column
+                        ])
         except Exception as e:
             print(f"Failed to get the SQL for cube {cube_name} {cube_id}: {str(e)}")
-            sql_view = ""
-
-        if sql_view:
-            matches = re.findall(pattern, sql_view, flags=re.DOTALL | re.IGNORECASE)
-            for match in matches:
-                match = " ".join(match.split())
-                parser = Parser(match)
-                
-                for table in parser.tables:
-                    if not table.startswith(("ZZ","*")):
-                        for column in parser.columns:
-                            if not column.startswith(("ZZ","*")):
-                                detailed_results.append([
-                                    project.name, cube_id, cube_name, cube_subtype, table, column
-                                ])
 
     # Close project-specific connection
     proj_conn.close()
@@ -77,16 +71,9 @@ for project in projects:
 # Close the general connection
 conn.close()
 
-# Remove duplicates and sort for both results
-detailed_results = list(detailed_results for detailed_results, _ in itertools.groupby(sorted(detailed_results)))
-sql_results = list(sql_results for sql_results, _ in itertools.groupby(sorted(sql_results)))
-
 # Create DataFrames
-detailed_headers = ["Project Name", "Cube ID", "Cube Name", "Cube Subtype", "Table Name", "Column Name"]
-df_detailed = pd.DataFrame(detailed_results, columns=detailed_headers)
-
-sql_headers = ["Project Name", "Cube ID", "Cube Name", "Cube SQL"]
-df_sql = pd.DataFrame(sql_results, columns=sql_headers)
+df_detailed = pd.DataFrame(detailed_results, columns=["Project Name", "Cube ID", "Cube Name", "Table Name", "Column Name"])
+df_sql = pd.DataFrame(sql_results, columns=["Project Name", "Cube ID", "Cube Name", "Cube SQL"])
 
 # Export to CSV
 export_to_csv("cubes_tables_columns", df_detailed)
