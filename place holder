@@ -1,36 +1,36 @@
-import warnings
-import requests
-from mstrio import Connection
+from mstrio.connection import Connection
+from mstrio.project import Project
+from mstrio.cube import list_cubes
 
-# Disable warnings
-warnings.filterwarnings("ignore", category=requests.exceptions.InsecureRequestWarning)
+# Replace these variables with your actual details
+base_url = 'https://your-microstrategy-server.com/MicroStrategyLibrary/api'
+username = 'your_username'
+password = 'your_password'
 
-# Set up connection parameters
-url = 'https://your-microstrategy-server.com/MicroStrategyLibrary/api'
-username = 'your-username'
-password = 'your-password'
+# Connect to MicroStrategy
+conn = Connection(base_url=base_url, username=username, password=password, login_mode=1)
 
-# Set up connection options
-options = {
-    'ssl_verify': False,
-    'login_mode': 16,
-    'certificate_path': None,
-    'proxies': None,
-    'parallelOlapCubeSuperCube': False,
-    'timeout': 60
-}
+# Fetch all projects
+projects = Project.list(conn)
 
-# Create a connection object
-conn = Connection(url, options=options)
+# Dictionary to store project names and their cubes
+project_cubes = {}
 
-# Log in to the MicroStrategy REST API server
-conn.login(username, password)
-
-# Get a list of projects
-projects = conn.projects
 for project in projects:
-    print(project.name)
+    # Set the project context for this iteration
+    conn.set_project(project.name)
 
-# Log out and close the connection
-conn.logout()
+    # List all cubes in the current project
+    cubes = list_cubes(conn, project_id=project.id, error_msg="Failed to fetch cubes.")
+
+    # Storing cubes in the dictionary
+    project_cubes[project.name] = [cube.name for cube in cubes]
+
+    # Optionally, reset project context if needed elsewhere
+    conn.reset_project()
+
+# Disconnect from MicroStrategy
 conn.close()
+
+# Print or process the dictionary of projects and their cubes
+print(project_cubes)
