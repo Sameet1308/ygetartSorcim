@@ -4,7 +4,6 @@ from mstrio.project_objects import list_all_cubes, OlapCube
 import getpass
 import pandas as pd
 import csv
-import re
 
 # Define server URL and credentials
 SERVER_URL = "https://env-XXXXXX.customer.cloud.microstrategy.com/MicroStrategyLibrary"
@@ -14,12 +13,7 @@ PASSWORD = getpass.getpass(prompt='Password ')
 def export_to_csv(filename, df):
     df.to_csv(f"{filename}.csv", index=False, encoding='utf-8', sep=",", quoting=csv.QUOTE_ALL, escapechar="\\")
 
-# Enhanced Regex patterns to capture more complex SQL queries
-table_pattern = re.compile(r'\bfrom\b\s+([\w\.\[\]]+)|\bjoin\b\s+([\w\.\[\]]+)', re.IGNORECASE)
-column_pattern = re.compile(r'\bselect\b(.*?)\bfrom\b', re.IGNORECASE | re.DOTALL)
-
-# Lists to store results
-detailed_results = []
+# List to store SQL results
 sql_results = []
 
 # Get a list of all projects
@@ -45,23 +39,11 @@ for project in projects:
             current_cube = OlapCube(connection=proj_conn, id=cube_id)
             sql_view = current_cube.export_sql_view()
             if sql_view:
-                # Store the complete SQL view
                 sql_results.append([
                     project.name, cube_id, cube_name, sql_view
                 ])
-
-                # Extract tables
-                tables = set(match[0] or match[1] for match in table_pattern.findall(sql_view))
-
-                # Extract columns
-                column_extract = column_pattern.search(sql_view)
-                columns = set(column.strip() for column in re.split(r',\s*(?![^()]*\))', column_extract.group(1))) if column_extract else set()
-
-                for table in tables:
-                    for column in columns:
-                        detailed_results.append([
-                            project.name, cube_id, cube_name, table, column
-                        ])
+            else:
+                print(f"No SQL found for Cube: {cube_name} (ID: {cube_id})")
         except Exception as e:
             print(f"Failed to get the SQL for cube {cube_name} {cube_id}: {str(e)}")
 
@@ -71,12 +53,10 @@ for project in projects:
 # Close the general connection
 conn.close()
 
-# Create DataFrames
-df_detailed = pd.DataFrame(detailed_results, columns=["Project Name", "Cube ID", "Cube Name", "Table Name", "Column Name"])
+# Create DataFrame for SQL views
 df_sql = pd.DataFrame(sql_results, columns=["Project Name", "Cube ID", "Cube Name", "Cube SQL"])
 
 # Export to CSV
-export_to_csv("cubes_tables_columns", df_detailed)
 export_to_csv("cubes_sql_views", df_sql)
 
-print("Export complete. DataFrames saved to 'cubes_tables_columns.csv' and 'cubes_sql_views.csv'.")
+print("Export complete. DataFrame saved to 'cubes_sql_views.csv'.")
