@@ -4,6 +4,7 @@ from mstrio.project_objects import list_all_cubes, OlapCube
 import getpass
 import pandas as pd
 import warnings
+import re
 
 # Suppress warnings if you have certificate verification issues
 warnings.filterwarnings("ignore")
@@ -17,6 +18,10 @@ def export_to_excel(filename, df):
     with pd.ExcelWriter(f"{filename}.xlsx", engine='openpyxl') as writer:
         df.to_excel(writer, index=False, sheet_name='Data')
 
+# Regex patterns to capture tables and columns
+table_pattern = re.compile(r'\bfrom\b\s+([\w\.\[\]"`]+)|\bjoin\b\s+([\w\.\[\]"`]+)', re.IGNORECASE)
+column_pattern = re.compile(r'\bselect\b(.*?)\bfrom\b', re.IGNORECASE | re.DOTALL)
+
 # Establish connection with SSL verification disabled
 conn = Connection(SERVER_URL, username=USERNAME, password=PASSWORD, ssl_verify=False)
 conn.connect()
@@ -25,7 +30,8 @@ conn.connect()
 env = Environment(connection=conn)
 projects = env.list_projects()
 
-# List to store SQL results
+# Lists to store results
+detailed_results = []
 sql_results = []
 
 for project in projects:
@@ -47,13 +53,37 @@ for project in projects:
                 sql_results.append([
                     project.name, cube_id, cube_name, cube_type, sql_view
                 ])
+
+                # Try to extract tables and columns
+                try:
+                    tables = set(match[0] or match[1] for match in table_pattern.findall(sql_view))
+                    column_extract = column_pattern.search(sql_view)
+                    columns = set(column.strip() for column in re.split(r',\s*(?![^()]*\))', column_extract.group(1))) if column_extract else set()
+
+                    for table in tables:
+                        for column in columns:
+                            detailed_results.append([
+                                project.name, cube_id, cube_name, cube_type, table, column
+                            ])
+                except Exception as detail_err:
+                    error_message = str(detail_err)
+                    detailed_results.append([
+                        project.name, cube_id, cube_name, cube_type, "Error extracting details", error_message
+                    ])
             else:
                 sql_results.append([
                     project.name, cube_id, cube_name, cube_type, "SQL view is empty"
                 ])
+                detailed_results.append([
+                    project.name, cube_id, cube_name, cube_type, "Error extracting details", "SQL view is empty"
+                ])
         except Exception as e:
+            error_message = str(e)
+            detailed_results.append([
+                project.name, cube_id, cube_name, cube_type, "Unable to retrieve SQL view", error_message
+            ])
             sql_results.append([
-                project.name, cube_id, cube_name, cube_type, f"Error retrieving SQL: {str(e)}"
+                project.name, cube_id, cube_name, cube_type, "Error retrieving SQL: " + error_message
             ])
 
     # Close project-specific connection
@@ -62,10 +92,12 @@ for project in projects:
 # Close the general connection
 conn.close()
 
-# Create DataFrame for SQL views
+# Create DataFrames
+df_detailed = pd.DataFrame(detailed_results, columns=["Project Name", "Cube ID", "Cube Name", "Cube Type", "Table Name", "Column Name"])
 df_sql = pd.DataFrame(sql_results, columns=["Project Name", "Cube ID", "Cube Name", "Cube Type", "Cube SQL"])
 
 # Export to Excel
+export_to_excel("cubes_tables_columns", df_detailed)
 export_to_excel("cubes_sql_views", df_sql)
 
-print("Export complete. DataFrame saved to 'cubes_sql_views.xlsx'.")
+print("Export complete. DataFrames saved to 'cubes_tables_columns.xlsx' and 'cubes_sql_views.xlsx'.")
