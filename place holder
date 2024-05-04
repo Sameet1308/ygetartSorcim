@@ -1,29 +1,50 @@
 from mstrio.connection import Connection
-from mstrio.project import list_projects
+from mstrio.server import Environment
 from mstrio.project_objects import list_all_cubes, OlapCube
 import getpass
 import pandas as pd
-import csv
+import warnings
+import re
+
+# Suppress warnings if you have certificate verification issues
+warnings.filterwarnings("ignore")
 
 # Define server URL and credentials
 SERVER_URL = "https://env-XXXXXX.customer.cloud.microstrategy.com/MicroStrategyLibrary"
 USERNAME = "mstr"
 PASSWORD = getpass.getpass(prompt='Password ')
 
-def export_to_csv(filename, df):
-    df.to_csv(f"{filename}.csv", index=False, encoding='utf-8', sep=",", quoting=csv.QUOTE_ALL, escapechar="\\")
+def export_to_excel(filename, df):
+    with pd.ExcelWriter(f"{filename}.xlsx", engine='openpyxl') as writer:
+        df.to_excel(writer, index=False, sheet_name='Data')
 
-# List to store SQL results
+# Enhanced Regex patterns
+# Attempt to catch common table expressions and JOIN clauses more effectively
+table_pattern = re.compile(r'''
+    \bFROM\b\s+([\w\.\[\]"`]+)|    # Matches table names after FROM
+    \bJOIN\b\s+([\w\.\[\]"`]+)|    # Matches table names after JOIN
+    \bWITH\b\s+([\w]+)\s+AS\s+\(|  # Matches CTE names defined with WITH
+    \bUPDATE\b\s+([\w\.\[\]"`]+)|  # Matches tables in UPDATE statements
+    \bINTO\b\s+([\w\.\[\]"`]+)     # Matches tables in INTO statements
+    ''', re.IGNORECASE | re.VERBOSE)
+
+column_pattern = re.compile(r'\bSELECT\b(.*?)\bFROM\b', re.IGNORECASE | re.DOTALL)
+
+# Lists to store results
+detailed_results = []
 sql_results = []
 
-# Get a list of all projects
-conn = Connection(SERVER_URL, username=USERNAME, password=PASSWORD)
+# Establish connection with SSL verification disabled
+conn = Connection(SERVER_URL, username=USERNAME, password=PASSWORD, ssl_verify=False)
 conn.connect()
-projects = list_projects(connection=conn)
+
+# List projects using the Environment class
+env = Environment(connection=conn)
+projects = env.list_projects()
 
 for project in projects:
     # Connect to each project individually
-    proj_conn = Connection(SERVER_URL, username=USERNAME, password=PASSWORD, project_id=project.id)
+    proj_conn = Connection(SERVER_URL, username=USERNAME, password=PASSWORD, project_id=project.id, ssl_verify=False)
     proj_conn.connect()
     
     print(f"\nProcessing Project: {project.name} (ID: {project.id})")
@@ -32,20 +53,46 @@ for project in projects:
     cubes_as_dicts = list_all_cubes(connection=proj_conn, to_dictionary=True)
 
     for cube in cubes_as_dicts:
-        cube_id, cube_name = cube["id"], cube["name"]
-        print(f"\nProcessing Cube: {cube_name} (ID: {cube_id})")
+        cube_id, cube_name, cube_type = cube["id"], cube["name"], cube.get("type", "Unknown")
+        print(f"\nProcessing Cube: {cube_name} (ID: {cube_id}, Type: {cube_type})")
 
         try:
             current_cube = OlapCube(connection=proj_conn, id=cube_id)
             sql_view = current_cube.export_sql_view()
             if sql_view:
                 sql_results.append([
-                    project.name, cube_id, cube_name, sql_view
+                    project.name, cube_id, cube_name, cube_type, sql_view
                 ])
+
+                # Try to extract tables and columns
+                try:
+                    tables = set(match[0] or match[1] or match[2] or match[3] or match[4] for match in table_pattern.findall(sql_view))
+                    column_extract = column_pattern.search(sql_view)
+                    columns = set(column.strip() for column in re.split(r',\s*(?![^()]*\))', column_extract.group(1))) if column_extract else set()
+
+                    if tables and columns:
+                        for table in tables:
+                            for column in columns:
+                                detailed_results.append([
+                                    project.name, cube_id, cube_name, cube_type, table, column
+                                ])
+                    else:
+                        raise ValueError("No tables or columns could be extracted.")
+                except Exception as detail_err:
+                    error_message = str(detail_err)
+                    detailed_results.append([
+                        project.name, cube_id, cube_name, cube_type, "Error extracting details", error_message
+                    ])
             else:
-                print(f"No SQL found for Cube: {cube_name} (ID: {cube_id})")
+                raise ValueError("SQL view is empty.")
         except Exception as e:
-            print(f"Failed to get the SQL for cube {cube_name} {cube_id}: {str(e)}")
+            error_message = str(e)
+            detailed_results.append([
+                project.name, cube_id, cube_name, cube_type, "Unable to retrieve SQL view", error_message
+            ])
+            sql_results.append([
+                project.name, cube_id, cube_name, cube_type, "Error: " + error_message
+            ])
 
     # Close project-specific connection
     proj_conn.close()
@@ -53,10 +100,12 @@ for project in projects:
 # Close the general connection
 conn.close()
 
-# Create DataFrame for SQL views
-df_sql = pd.DataFrame(sql_results, columns=["Project Name", "Cube ID", "Cube Name", "Cube SQL"])
+# Create DataFrames
+df_detailed = pd.DataFrame(detailed_results, columns=["Project Name", "Cube ID", "Cube Name", "Cube Type", "Table Name", "Column Name"])
+df_sql = pd.DataFrame(sql_results, columns=["Project Name", "Cube ID", "Cube Name", "Cube Type", "Cube SQL"])
 
-# Export to CSV
-export_to_csv("cubes_sql_views", df_sql)
+# Export to Excel
+export_to_excel("cubes_tables_columns", df_detailed)
+export_to_excel("cubes_sql_views", df_sql)
 
-print("Export complete. DataFrame saved to 'cubes_sql_views.csv'.")
+print("Export complete. DataFrames saved to 'cubes_tables_columns.xlsx' and 'cubes_sql_views.xlsx'.")
