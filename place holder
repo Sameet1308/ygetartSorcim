@@ -1,47 +1,79 @@
-from mstrio.project_objects.dossier import list_dossiers
-from mstrio.project_objects.document import list_documents
+def full_search(conn, project, used_by_object_id, used_by_object_type):
+    start_search_params = {
+        "conn": conn,
+        "project": project,
+        "used_by_object_id": used_by_object_id,
+        "used_by_object_type": used_by_object_type
+    }
+    resp = start_full_search(**start_search_params)
+    return resp["results"]
+def start_full_search(conn, project, used_by_object_id, used_by_object_type):
+    # Example implementation for the search logic
+    # Replace with actual search implementation
+    search_params = {
+        "conn": conn,
+        "project": project,
+        "used_by_object_id": used_by_object_id,
+        "used_by_object_type": used_by_object_type
+    }
+    # Example return
+    return {"results": []}  # Replace with actual results from search logic
 
-l12_mapping = [] # this will be mapping dossier/document with their datasets
-l2_non_schema_datasets = [] # this will collect details of non schema dataset (internal dossier or data import)
-l23_mapping = [] # this will be mapping non schema datasets with report objects
+def search_deps(conn, project_id, obj_id, obj_type):
+    objects = full_search(
+        conn,
+        project=project_id,
+        used_by_object_id=obj_id,
+        used_by_object_type=obj_type
+    )
+    return [{"type": d["type"], "id": d["id"], "name": d["name"]} for d in objects]
 
-for project in selected_projects:
-    pid = project[0]
-    print(project[1])
-    conn.select_project(project_id=pid)
-    l12_mapping.append([pid, 'KEY_SF', 'KEY_SF'])
-    l23_mapping.append([pid, 'KEY_SF', 'KEY_SF'])
-    
-    # existing "normal" schema datasets in current project
-    dataset_ids = [did[3] for did in datasets_all if did[0] == pid]
 
-    dossiers_list = list_dossiers(connection=conn)
-    for i, d in enumerate(dossiers_list[:]):
-        print(i + 1, "/", len(dossiers_list), " - ", d.name, d.id, d.type.name)
-        r = get_dossier_definition(conn, d.id).json()
-        
-        # Debug statement to inspect the response structure
-        print(f"Dossier Definition for {d.name} (ID: {d.id}): {r}")
-        
-        if 'datasets' in r:
-            for dset in r['datasets']:
-                if dset['id'] not in dataset_ids:
-                    l12_mapping.append([pid, d.id, dset['id']])
-                    l2_non_schema_datasets.append([pid, "DATASET", 0, dset['id'], dset['name'], "dynamic"])
-                    for ao in dset['availableObjects']:
-                        l23_mapping.append([pid, dset['id'], ao['id']])
+def resolve_down(conn, pid, object_dependants, deps_to_resolve, deps_finished):
+    while deps_to_resolve:
+        for dtr in deps_to_resolve[:]:
+            pid, rep_type, rep_id, rep_name = dtr[0], dtr[1], dtr[2], dtr[3]
+            dep_type, dep_id, dep_name = dtr[4], dtr[5], dtr[6]
+            print("\n### Dependency name:", dep_name, dep_id, dep_type)
+            try:
+                if (dep_id in [o[2] for o in object_dependants]) or (dep_type in [11, 61, 53, 22, 26]):
+                    print("Already checked or unnecessary")
                 else:
-                    l12_mapping.append([pid, d.id, dset['id']])
-        
-    print(f"\nDossiers finished... Mappings Count: {len(l12_mapping)}")
-                
-    documents_list = list_documents(connection=conn, project_id=pid)
-    print(f"\nNumber of documents found: {len(documents_list)}")
-    for i, d in enumerate(documents_list[:]):
-        print(i + 1, "/", len(documents_list), " - ", d.name, d.id, d.type.name)
-        for c in get_object_deps(d, pid):
-            if c[4] == 3: # found report object
-                l12_mapping.append([pid, d.id, c[5]])
-                
-    print(f"\nDocuments finished... Mappings Count: {len(l12_mapping)}")
+                    deps = search_deps(conn, pid, dep_id, dep_type)
+                    if deps:
+                        print("# of components:", len(deps))
+                        for nd in deps:
+                            dep_nd = [pid, dep_type, dep_id, dep_name, nd["type"], nd["id"], nd["name"]]
+                            rep_nd = [pid, rep_type, rep_id, rep_name, nd["type"], nd["id"], nd["name"]]
 
+                            object_dependants.append(dep_nd)
+                            print(dep_nd, "added to object_dependants")
+
+                            if nd["type"] in [4, 7, 12, 13]:
+                                deps_finished.append(rep_nd)
+                                print(rep_nd, "added to deps_finished")
+                            else:
+                                deps_to_resolve.append(rep_nd)
+                                print(rep_nd, "added to deps_to_resolve")
+                    else:
+                        object_dependants.append([pid, dep_type, dep_id, dep_name, 0, "NA", "NA"])
+                        print("empty component added to object_dependants")
+                deps_to_resolve.remove(dtr)
+                print(f"Number of objects that remain to be resolved: {len(deps_to_resolve)}")
+            except Exception as e:
+                print(f"Error processing dependency {dep_name} ({dep_id}): {e}")
+
+    print("Objects terminal dependencies to SO identified:", len(deps_finished))
+    print("Objects to be resolved:", len(deps_to_resolve))
+    return deps_finished
+
+
+# Initialize variables
+object_dependants = []
+deps_to_resolve = [(pid, rep_type, rep_id, rep_name, dep_type, dep_id, dep_name)]
+deps_finished = []
+
+# Call resolve_down to process dependencies
+deps_finished = resolve_down(conn, pid, object_dependants, deps_to_resolve, deps_finished)
+
+# Further processing...
