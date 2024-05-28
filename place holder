@@ -1,38 +1,59 @@
-<!-- Add a custom button in your dossier -->
-<button id="exportBtn">Export to PDF</button>
+from mstrio.project_objects import list_dossiers, list_documents, get_dossier_definition
 
-<script>
-// Wait until MicroStrategy Library is fully loaded
-document.addEventListener("DOMContentLoaded", function () {
-    // Add an event listener to your button
-    document.getElementById("exportBtn").addEventListener("click", function() {
-        // Function to fetch the authentication token and export the dossier
-        mstr.library.session.getAuthToken().then(function(authToken) {
-            const dossierId = '<Your_Dossier_ID>';
-            const projectId = '<Your_Project_ID>';
-            const url = `/MicroStrategyLibrary/api/dossiers/${dossierId}/pdf`;
+l12_mapping = []  # This will be mapping dossier/dataset with their datasets
+l2_non_schema_datasets = []  # This will keep track of non-schema datasets (internal dossier or data import)
+l23_mapping = []  # This will be mapping non-schema datasets with report objects
 
-            fetch(url, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-MSTR-AuthToken': authToken,
-                    'X-MSTR-ProjectID': projectId
-                }
-            })
-            .then(response => response.blob())
-            .then(blob => {
-                const url = window.URL.createObjectURL(new Blob([blob]));
-                const a = document.createElement('a');
-                a.style.display = 'none';
-                a.href = url;
-                a.download = 'dossier.pdf';
-                document.body.appendChild(a);
-                a.click();
-                window.URL.revokeObjectURL(url);
-            })
-            .catch(error => console.error('Error exporting dossier:', error));
-        });
-    });
-});
-</script>
+for project in selected_projects:
+    pid = project[0]
+    print(project[1])
+    conn.select_project(project_id=pid)
+    l12_mapping.append([pid, KEY_SF, KEY_SF])
+    l23_mapping.append([pid, KEY_SF, KEY_SF])
+
+    # Existing "normal" schema datasets in current project
+    dataset_ids = {d['id'] for d in datasets_all if d['pid'] == pid}
+
+    dossiers_list = list_dossiers(connection=conn)
+    for i, d in enumerate(dossiers_list):
+        print(i+1, "/", len(dossiers_list), "-", d.name, d.id, d.type.name)
+        try:
+            r = get_dossier_definition(conn, d.id).json()
+            if 'datasets' in r:
+                for dset in r['datasets']:
+                    if dset['id'] not in dataset_ids:
+                        l12_mapping.append([pid, dset['id']])
+                for ao in r.get('availableObjects', []):
+                    l23_mapping.append([pid, dset['id'], ao['id']])
+            else:
+                print(f"Key 'datasets' not found in the response for dossier id: {d.id}")
+        except KeyError as e:
+            print(f"KeyError: {e} for dossier id: {d.id}")
+        except Exception as e:
+            print(f"Unexpected error: {e} for dossier id: {d.id}")
+
+    print(f"\nDossiers finished... Mappings Count: {len(l12_mapping)}")
+
+    documents_list = list_documents(connection=conn, project_id=pid)
+    print(f"\nNumber of documents found: {len(documents_list)}")
+    for i, d in enumerate(documents_list):
+        print(i+1, "/", len(documents_list), "-", d.name, d.id, d.type.name)
+        try:
+            r = get_object_definition(conn, d.id).json()
+            for c in r.get('components', []):
+                if c[4] == 'form':
+                    l12_mapping.append([pid, d.id, c[0]])
+        except KeyError as e:
+            print(f"KeyError: {e} for document id: {d.id}")
+        except Exception as e:
+            print(f"Unexpected error: {e} for document id: {d.id}")
+
+    print(f"\nDocuments finished... Mappings Count: {len(l12_mapping)}")
+
+l12_mapping = unique_list(l12_mapping)
+l23_mapping = unique_list(l23_mapping)
+l2_non_schema_datasets = unique_list(l2_non_schema_datasets)
+datasets_all += l2_non_schema_datasets
+
+# Make sure standalone reports are added to mapping table
+l12_mapping = map_standalone_obj(l12_mapping, datasets_all, 3)
