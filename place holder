@@ -1,59 +1,47 @@
-from mstrio.project_objects import list_dossiers, list_documents, get_dossier_definition
+from mstrio.project_objects.dossier import list_dossiers
+from mstrio.project_objects.document import list_documents
 
-l12_mapping = []  # This will be mapping dossier/dataset with their datasets
-l2_non_schema_datasets = []  # This will keep track of non-schema datasets (internal dossier or data import)
-l23_mapping = []  # This will be mapping non-schema datasets with report objects
+l12_mapping = [] # this will be mapping dossier/document with their datasets
+l2_non_schema_datasets = [] # this will collect details of non schema dataset (internal dossier or data import)
+l23_mapping = [] # this will be mapping non schema datasets with report objects
 
 for project in selected_projects:
     pid = project[0]
     print(project[1])
     conn.select_project(project_id=pid)
-    l12_mapping.append([pid, KEY_SF, KEY_SF])
-    l23_mapping.append([pid, KEY_SF, KEY_SF])
-
-    # Existing "normal" schema datasets in current project
-    dataset_ids = {d['id'] for d in datasets_all if d['pid'] == pid}
+    l12_mapping.append([pid, 'KEY_SF', 'KEY_SF'])
+    l23_mapping.append([pid, 'KEY_SF', 'KEY_SF'])
+    
+    # existing "normal" schema datasets in current project
+    dataset_ids = [did[3] for did in datasets_all if did[0] == pid]
 
     dossiers_list = list_dossiers(connection=conn)
-    for i, d in enumerate(dossiers_list):
-        print(i+1, "/", len(dossiers_list), "-", d.name, d.id, d.type.name)
-        try:
-            r = get_dossier_definition(conn, d.id).json()
-            if 'datasets' in r:
-                for dset in r['datasets']:
-                    if dset['id'] not in dataset_ids:
-                        l12_mapping.append([pid, dset['id']])
-                for ao in r.get('availableObjects', []):
-                    l23_mapping.append([pid, dset['id'], ao['id']])
-            else:
-                print(f"Key 'datasets' not found in the response for dossier id: {d.id}")
-        except KeyError as e:
-            print(f"KeyError: {e} for dossier id: {d.id}")
-        except Exception as e:
-            print(f"Unexpected error: {e} for dossier id: {d.id}")
-
+    for i, d in enumerate(dossiers_list[:]):
+        print(i + 1, "/", len(dossiers_list), " - ", d.name, d.id, d.type.name)
+        r = get_dossier_definition(conn, d.id).json()
+        
+        # Debug statement to inspect the response structure
+        print(f"Dossier Definition for {d.name} (ID: {d.id}): {r}")
+        
+        if 'datasets' in r:
+            for dset in r['datasets']:
+                if dset['id'] not in dataset_ids:
+                    l12_mapping.append([pid, d.id, dset['id']])
+                    l2_non_schema_datasets.append([pid, "DATASET", 0, dset['id'], dset['name'], "dynamic"])
+                    for ao in dset['availableObjects']:
+                        l23_mapping.append([pid, dset['id'], ao['id']])
+                else:
+                    l12_mapping.append([pid, d.id, dset['id']])
+        
     print(f"\nDossiers finished... Mappings Count: {len(l12_mapping)}")
-
+                
     documents_list = list_documents(connection=conn, project_id=pid)
     print(f"\nNumber of documents found: {len(documents_list)}")
-    for i, d in enumerate(documents_list):
-        print(i+1, "/", len(documents_list), "-", d.name, d.id, d.type.name)
-        try:
-            r = get_object_definition(conn, d.id).json()
-            for c in r.get('components', []):
-                if c[4] == 'form':
-                    l12_mapping.append([pid, d.id, c[0]])
-        except KeyError as e:
-            print(f"KeyError: {e} for document id: {d.id}")
-        except Exception as e:
-            print(f"Unexpected error: {e} for document id: {d.id}")
-
+    for i, d in enumerate(documents_list[:]):
+        print(i + 1, "/", len(documents_list), " - ", d.name, d.id, d.type.name)
+        for c in get_object_deps(d, pid):
+            if c[4] == 3: # found report object
+                l12_mapping.append([pid, d.id, c[5]])
+                
     print(f"\nDocuments finished... Mappings Count: {len(l12_mapping)}")
 
-l12_mapping = unique_list(l12_mapping)
-l23_mapping = unique_list(l23_mapping)
-l2_non_schema_datasets = unique_list(l2_non_schema_datasets)
-datasets_all += l2_non_schema_datasets
-
-# Make sure standalone reports are added to mapping table
-l12_mapping = map_standalone_obj(l12_mapping, datasets_all, 3)
