@@ -1,110 +1,36 @@
-import pandas as pd
-import itertools
-from mstrio.project_objects.dossier import list_dossiers, list_documents
-from mstrio.project_objects.report import list_reports
-from mstrio.object_management import full_search
-from mstrio.types import ObjectSubTypes, ObjectTypes
-from mstrio.dataset import SuperCube
-import csv
+# Main script
 
-# Placeholder for KEY_SF and other constants
-KEY_SF = 'KEY_SF'
-upload_proj_id = 'UPLOAD_PROJECT_ID'  # Replace with the actual project ID
-cubes_ids = {
-    'level_id': ('CUBE_ID', ['COLUMN1', 'COLUMN2'])  # Replace with actual cube IDs and columns
-}
+object_dependants = []
+deps_completed_all = []
 
-def export_to_csv(level_id, df):
-    df.to_csv(f"{level_id}.csv", index=False, encoding='utf-8', sep=",", quoting=csv.QUOTE_ALL, escapechar="\\", header=True)
+for project in selected_projects:
+    pid = project[0]
+    print(pid, project[1])
+    conn.select_project(project_id=pid)
 
-def create_new_cube(mstr_connection, folder_id, level_id, df, header, update_policy):
-    dataset = SuperCube(mstr_connection, name=level_id)
-    dataset.add_table(name=level_id, data_frame=df, update_policy=update_policy, to_attribute=header, to_metric=[])
-    dataset.create(folder_id=folder_id)
-    return dataset.id
+    reports_list = list_reports(connection=conn, project_id=pid)
+    print(f"\nNumber of reports found: {len(reports_list)}\nGetting components of each report now")    
 
-def push_to_cube(mstr_connection, cube_id, level_id, df, update_policy):
-    dataset = SuperCube(mstr_connection, id=cube_id)
-    dataset.add_table(name=level_id, data_frame=df, update_policy=update_policy)
-    dataset.update()
+    for i, r in enumerate(reports_list[:]):
+        print(f"{i}/{len(reports_list)} --- {r.name} --- {r.id}")
+        object_dependants.extend(get_object_deps(r, pid))
     
-def push_data(conn, cube_export, csv_export, level_id, datalist, update_policy):
-    df = pd.DataFrame(datalist, columns=cubes_ids[level_id][1])
-    if csv_export:
-        export_to_csv(level_id, df)
-    if cube_export:
-        conn.select_project(project_id=upload_proj_id)
-        push_to_cube(conn, cubes_ids[level_id][0], level_id, df, update_policy)
-        
-def unique_list(alist):  # sorts a list of lists
-    alist.sort()
-    alist = list(alist for alist, _ in itertools.groupby(alist))
-    return alist
-
-def get_dependants(mstr_obj, project_id, parent_id):  # this will work for Reports, Metrics, (?)
-    return [[project_id, parent_id, d["type"], d["id"], d["name"]] for d in mstr_obj.list_dependencies()]
-
-def get_object_deps(r, project_id):  # this one takes an object to search
-    deps = r.list_dependencies()
-    return [[project_id, r.type.value, r.id, r.name, d["type"], d["id"], d["name"]] for d in deps]
-
-def search_deps(conn, project_id, obj_id, obj_type):  # this one takes an object ID to search
-    objects = full_search(
-        conn,
-        project=project_id,
-        used_by_object_id=obj_id,
-        used_by_object_type=obj_type
-    )
-    return [[d["type"], d["id"], d["name"]] for d in objects]
-
-def resolve_down(conn, pid, object_dependants, deps_to_resolve, deps_finished):
-    while deps_to_resolve:    
-        for dtr in deps_to_resolve[:]:
-            pid, rep_type, rep_id, rep_name = dtr[0], dtr[1], dtr[2], dtr[3]  # those params will be used for recursive search
-            dep_type, dep_id, dep_name = dtr[4], dtr[5], dtr[6]
-            print("\n### Dependency name:", dep_name, dep_id, dep_type)
-            # we can eliminate dependencies we already know and deps of weird objects like functions
-            if (dep_id in [o[2] for o in object_dependants]) or (dep_type in [11, 61, 53, 22, 26]):
-                print("Already checked or unnecessary")
-            else:
-                deps = search_deps(conn, pid, dep_id, dep_type)
-                if deps:  # there are objects like functions without components
-                    print("# of components:", len(deps))
-                    for nd in deps:
-                        dep_nd = [pid, dep_type, dep_id, dep_name, nd[0], nd[1], nd[2]]
-                        rep_nd = [pid, rep_type, rep_id, rep_name, nd[0], nd[1], nd[2]]
-
-                        # ADD deps to object_dependants: dep + nd
-                        object_dependants.append(dep_nd)
-                        print(dep_nd, "added to object_dependants")
-
-                        if nd[0] in [4, 7, 12, 13]:
-                            # ADD deps to deps_finished: rep + nd
-                            deps_finished.append(rep_nd)
-                            print(rep_nd, "added to deps_finished")
-                        else:
-                            # ADD deps to deps_to_resolve: rep + nd
-                            deps_to_resolve.append(rep_nd)
-                            print(rep_nd, "added to deps_to_resolve")
-                else:
-                    object_dependants.append([pid, dep_type, dep_id, dep_name, 0, "NA", "NA"])
-                    print("empty component added to object_dependants")
-            deps_to_resolve.remove(dtr)
-            print(f"Number of objects that remain to be resolved: {len(deps_to_resolve)}")
-
-    print("Objects terminal dependencies to SO identified:", len(deps_finished))
+    print("All report objects components:", len(object_dependants), "\n\n")
+    
+    # Let's split what is already done from objects to resolve
+    deps_finished = []  # already identified dependencies down to Report Objects
+    deps_to_resolve = []  # dynamic list of objects to resolve (check deps)
+    for d in object_dependants:
+        if d[4] in [4, 7, 12, 13, 1]:  # Assuming these are the types you are interested in
+            deps_finished.append(d)
+        else:
+            deps_to_resolve.append(d)
+    print("Reports RO dependencies identified:", len(deps_finished))
     print("Objects to be resolved:", len(deps_to_resolve))
-    return deps_finished
+    print("\nResolving dependencies of remaining objects now")    
+    
+    deps_finished = resolve_down(conn, pid, object_dependants, deps_to_resolve, deps_finished)
+    deps_completed_all.extend(deps_finished)
+    print("Job finished for Project:", pid, project[1], "\n\n")
 
-def get_dossier_definition(connection, dossier_id):
-    url_add = f"/api/v2/dossiers/{dossier_id}/definition"
-    res = connection.get(url=connection.base_url + url_add)
-    return res
-
-def map_standalone_obj(map_list, child_obj_list, child_obj_position):
-    map_list_std = unique_list([[m[0], m[2]] for m in map_list])
-    child_obj_list_std = unique_list([[m[0], m[child_obj_position]] for m in child_obj_list])
-    for d in child_obj_list_std:
-        if d not in map_list_std:
-            map_list.append([d[0], KEY_SF, d[1]])
-    return map_list
+print("All projects finished.")
