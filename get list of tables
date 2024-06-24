@@ -1,86 +1,80 @@
-"""
-This script will extract all projects on the MicroStrategy server, retrieve all types of tables for each project, and export the details to an Excel file.
-"""
-
 import pandas as pd
-import warnings
-from mstrio.connection import Connection
-from mstrio.project_objects import Project
+from mstrio import Connection, Environment
+from mstrio.modeling.schema.table import list_physical_tables, list_logical_tables, list_tables_prefixes, list_warehouse_tables
 from mstrio.datasources.datasource_instance import list_connected_datasource_instances
-from mstrio.modeling.schema.helpers import PhysicalTableType
-from mstrio.modeling.schema.table import (
-    list_logical_tables,
-    list_physical_tables,
-    list_tables_prefixes,
-    list_warehouse_tables,
-)
+from mstrio.modeling.schema.table import PhysicalTableType
 
-# Disable all warnings
-warnings.filterwarnings("ignore")
+# Connect to MicroStrategy with SSL verification disabled
+base_url = "your_base_url"  # Replace with your MicroStrategy base URL
+username = "your_username"  # Replace with your MicroStrategy username
+password = "your_password"  # Replace with your MicroStrategy password
 
-# Connect to MicroStrategy server with SSL verification disabled
-base_url = "your_base_url"  # e.g., "https://your-mstr-server.com/MicroStrategyLibrary/api"
-username = "your_username"
-password = "your_password"
+conn = Connection(base_url=base_url, username=username, password=password, ssl_verify=False)
+conn.connect()
 
-conn = Connection(base_url, username, password, ssl_verify=False)
+# Create an environment using the connection
+env = Environment(connection=conn)
 
-# Get all projects on the server
-projects = Project.list_projects(connection=conn)
+# Get a list of projects
+projects = env.list_projects()
 
-# List to store data for DataFrame
-data = []
+# List to store project table details
+project_tables = []
 
 # Function to get all types of tables for a given project
 def get_all_tables_for_project(connection, project_id, project_name):
-    print(f"Processing Project: {project_name} (ID: {project_id})")
-    
+    project_data = []
+
     # Get a list of table prefixes
     table_prefixes = list_tables_prefixes(connection=connection)
     for prefix in table_prefixes:
-        data.append([project_name, 'Table Prefix', prefix])
+        project_data.append([project_name, 'Table Prefix', prefix])
 
     # Get a list of physical tables
     physical_tables = list_physical_tables(connection=connection, project_id=project_id)
     for table in physical_tables:
-        data.append([project_name, 'Physical Table', table.name])
+        project_data.append([project_name, 'Physical Table', table.name])
 
     # Get a list of logical tables
-    logical_tables = list_logical_tables(connection=connection)
+    logical_tables = list_logical_tables(connection=connection, project_id=project_id)
     for table in logical_tables:
-        data.append([project_name, 'Logical Table', table.name])
+        project_data.append([project_name, 'Logical Table', table.name])
 
     # List connected datasource instances
     connected_datasource_instances = list_connected_datasource_instances(connection=connection)
     for datasource in connected_datasource_instances:
-        data.append([project_name, 'Datasource Instance', datasource.name])
+        project_data.append([project_name, 'Datasource Instance', datasource.name])
 
     # List of all available Warehouse Tables
     all_warehouse_tables = list_warehouse_tables(connection=connection)
     for table in all_warehouse_tables:
-        data.append([project_name, 'Warehouse Table', table.name])
+        project_data.append([project_name, 'Warehouse Table', table.name])
 
     # List logical tables based on physical tables of type normal
-    normal_tables = list_logical_tables(connection=connection, table_type=PhysicalTableType.NORMAL)
+    normal_tables = list_logical_tables(connection=connection, table_type=PhysicalTableType.NORMAL, project_id=project_id)
     for table in normal_tables:
-        data.append([project_name, 'Normal Logical Table', table.name])
+        project_data.append([project_name, 'Normal Logical Table', table.name])
 
     # List logical tables based on physical tables of type SQL
-    sql_tables = list_logical_tables(connection=connection, table_type=PhysicalTableType.SQL)
+    sql_tables = list_logical_tables(connection=connection, table_type=PhysicalTableType.SQL, project_id=project_id)
     for table in sql_tables:
-        data.append([project_name, 'SQL Logical Table', table.name])
+        project_data.append([project_name, 'SQL Logical Table', table.name])
 
     # List logical tables based on physical tables of type warehouse_partition
-    warehouse_partition_tables = list_logical_tables(connection=connection, table_type=PhysicalTableType.WAREHOUSE_PARTITION)
+    warehouse_partition_tables = list_logical_tables(connection=connection, table_type=PhysicalTableType.WAREHOUSE_PARTITION, project_id=project_id)
     for table in warehouse_partition_tables:
-        data.append([project_name, 'Warehouse Partition Logical Table', table.name])
+        project_data.append([project_name, 'Warehouse Partition Logical Table', table.name])
 
-# Iterate through each project and get all types of tables
+    return project_data
+
+# Iterate through each project and collect table details
 for project in projects:
-    get_all_tables_for_project(conn, project.id, project.name)
+    project_id = project['id']
+    project_name = project['name']
+    project_tables.extend(get_all_tables_for_project(conn, project_id, project_name))
 
-# Create a DataFrame from the data
-df = pd.DataFrame(data, columns=['Project Name', 'Table Type', 'Table Name'])
+# Create a DataFrame from the collected project tables data
+df = pd.DataFrame(project_tables, columns=['Project Name', 'Table Type', 'Table Name'])
 
 # Export the DataFrame to an Excel file
 output_file = 'mstr_projects_tables.xlsx'
