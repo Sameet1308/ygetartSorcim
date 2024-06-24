@@ -4,6 +4,10 @@ from mstrio.modeling.schema.table import list_physical_tables, list_logical_tabl
 from mstrio.datasources.datasource_instance import list_connected_datasource_instances
 from mstrio.modeling.schema.table import PhysicalTableType
 
+# Disable warnings
+import warnings
+warnings.filterwarnings("ignore")
+
 # Connect to MicroStrategy with SSL verification disabled
 base_url = "your_base_url"  # Replace with your MicroStrategy base URL
 username = "your_username"  # Replace with your MicroStrategy username
@@ -25,18 +29,21 @@ project_tables = []
 def get_all_tables_for_project(connection, project_id, project_name):
     project_data = []
 
+    # Switch to the project context
+    connection.project_id = project_id
+
     # Get a list of table prefixes
     table_prefixes = list_tables_prefixes(connection=connection)
     for prefix in table_prefixes:
         project_data.append([project_name, 'Table Prefix', prefix])
 
     # Get a list of physical tables
-    physical_tables = list_physical_tables(connection=connection, project_id=project_id)
+    physical_tables = list_physical_tables(connection=connection)
     for table in physical_tables:
         project_data.append([project_name, 'Physical Table', table.name])
 
     # Get a list of logical tables
-    logical_tables = list_logical_tables(connection=connection, project_id=project_id)
+    logical_tables = list_logical_tables(connection=connection)
     for table in logical_tables:
         project_data.append([project_name, 'Logical Table', table.name])
 
@@ -51,17 +58,17 @@ def get_all_tables_for_project(connection, project_id, project_name):
         project_data.append([project_name, 'Warehouse Table', table.name])
 
     # List logical tables based on physical tables of type normal
-    normal_tables = list_logical_tables(connection=connection, table_type=PhysicalTableType.NORMAL, project_id=project_id)
+    normal_tables = list_logical_tables(connection=connection, table_type=PhysicalTableType.NORMAL)
     for table in normal_tables:
         project_data.append([project_name, 'Normal Logical Table', table.name])
 
     # List logical tables based on physical tables of type SQL
-    sql_tables = list_logical_tables(connection=connection, table_type=PhysicalTableType.SQL, project_id=project_id)
+    sql_tables = list_logical_tables(connection=connection, table_type=PhysicalTableType.SQL)
     for table in sql_tables:
         project_data.append([project_name, 'SQL Logical Table', table.name])
 
     # List logical tables based on physical tables of type warehouse_partition
-    warehouse_partition_tables = list_logical_tables(connection=connection, table_type=PhysicalTableType.WAREHOUSE_PARTITION, project_id=project_id)
+    warehouse_partition_tables = list_logical_tables(connection=connection, table_type=PhysicalTableType.WAREHOUSE_PARTITION)
     for table in warehouse_partition_tables:
         project_data.append([project_name, 'Warehouse Partition Logical Table', table.name])
 
@@ -69,8 +76,8 @@ def get_all_tables_for_project(connection, project_id, project_name):
 
 # Iterate through each project and collect table details
 for project in projects:
-    project_id = project['id']
-    project_name = project['name']
+    project_id = project.id  # Accessing the project ID correctly
+    project_name = project.name  # Accessing the project name correctly
     project_tables.extend(get_all_tables_for_project(conn, project_id, project_name))
 
 # Create a DataFrame from the collected project tables data
