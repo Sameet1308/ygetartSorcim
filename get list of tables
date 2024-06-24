@@ -1,5 +1,6 @@
 import pandas as pd
-from mstrio import Connection, Environment
+from mstrio.connection import Connection
+from mstrio.project_objects import Project
 from mstrio.modeling.schema.table import list_physical_tables, list_logical_tables, list_tables_prefixes, list_warehouse_tables
 from mstrio.datasources.datasource_instance import list_connected_datasource_instances
 from mstrio.modeling.schema.table import PhysicalTableType
@@ -13,14 +14,22 @@ base_url = "your_base_url"  # Replace with your MicroStrategy base URL
 username = "your_username"  # Replace with your MicroStrategy username
 password = "your_password"  # Replace with your MicroStrategy password
 
-conn = Connection(base_url=base_url, username=username, password=password, ssl_verify=False)
-conn.connect()
+try:
+    conn = Connection(base_url=base_url, username=username, password=password, ssl_verify=False)
+    conn.connect()
+except Exception as e:
+    print(f"Failed to connect to MicroStrategy: {e}")
+    exit(1)
 
 # Create an environment using the connection
 env = Environment(connection=conn)
 
 # Get a list of projects
-projects = env.list_projects()
+try:
+    projects = env.list_projects()
+except Exception as e:
+    print(f"Failed to retrieve project list: {e}")
+    exit(1)
 
 # List to store project table details
 project_tables = []
@@ -30,47 +39,54 @@ def get_all_tables_for_project(connection, project_id, project_name):
     project_data = []
 
     # Switch to the project context
-    connection.project_id = project_id
+    try:
+        connection.select_project(project_id=project_id)
+    except Exception as e:
+        print(f"Failed to switch to project {project_name} ({project_id}): {e}")
+        return project_data
 
-    # Get a list of table prefixes
-    table_prefixes = list_tables_prefixes(connection=connection)
-    for prefix in table_prefixes:
-        project_data.append([project_name, 'Table Prefix', prefix])
+    try:
+        # Get a list of table prefixes
+        table_prefixes = list_tables_prefixes(connection=connection)
+        for prefix in table_prefixes:
+            project_data.append([project_name, 'Table Prefix', prefix])
 
-    # Get a list of physical tables
-    physical_tables = list_physical_tables(connection=connection)
-    for table in physical_tables:
-        project_data.append([project_name, 'Physical Table', table.name])
+        # Get a list of physical tables
+        physical_tables = list_physical_tables(connection=connection)
+        for table in physical_tables:
+            project_data.append([project_name, 'Physical Table', table.name])
 
-    # Get a list of logical tables
-    logical_tables = list_logical_tables(connection=connection)
-    for table in logical_tables:
-        project_data.append([project_name, 'Logical Table', table.name])
+        # Get a list of logical tables
+        logical_tables = list_logical_tables(connection=connection)
+        for table in logical_tables:
+            project_data.append([project_name, 'Logical Table', table.name])
 
-    # List connected datasource instances
-    connected_datasource_instances = list_connected_datasource_instances(connection=connection)
-    for datasource in connected_datasource_instances:
-        project_data.append([project_name, 'Datasource Instance', datasource.name])
+        # List connected datasource instances
+        connected_datasource_instances = list_connected_datasource_instances(connection=connection)
+        for datasource in connected_datasource_instances:
+            project_data.append([project_name, 'Datasource Instance', datasource.name])
 
-    # List of all available Warehouse Tables
-    all_warehouse_tables = list_warehouse_tables(connection=connection)
-    for table in all_warehouse_tables:
-        project_data.append([project_name, 'Warehouse Table', table.name])
+        # List of all available Warehouse Tables
+        all_warehouse_tables = list_warehouse_tables(connection=connection)
+        for table in all_warehouse_tables:
+            project_data.append([project_name, 'Warehouse Table', table.name])
 
-    # List logical tables based on physical tables of type normal
-    normal_tables = list_logical_tables(connection=connection, table_type=PhysicalTableType.NORMAL)
-    for table in normal_tables:
-        project_data.append([project_name, 'Normal Logical Table', table.name])
+        # List logical tables based on physical tables of type normal
+        normal_tables = list_logical_tables(connection=connection, table_type=PhysicalTableType.NORMAL)
+        for table in normal_tables:
+            project_data.append([project_name, 'Normal Logical Table', table.name])
 
-    # List logical tables based on physical tables of type SQL
-    sql_tables = list_logical_tables(connection=connection, table_type=PhysicalTableType.SQL)
-    for table in sql_tables:
-        project_data.append([project_name, 'SQL Logical Table', table.name])
+        # List logical tables based on physical tables of type SQL
+        sql_tables = list_logical_tables(connection=connection, table_type=PhysicalTableType.SQL)
+        for table in sql_tables:
+            project_data.append([project_name, 'SQL Logical Table', table.name])
 
-    # List logical tables based on physical tables of type warehouse_partition
-    warehouse_partition_tables = list_logical_tables(connection=connection, table_type=PhysicalTableType.WAREHOUSE_PARTITION)
-    for table in warehouse_partition_tables:
-        project_data.append([project_name, 'Warehouse Partition Logical Table', table.name])
+        # List logical tables based on physical tables of type warehouse_partition
+        warehouse_partition_tables = list_logical_tables(connection=connection, table_type=PhysicalTableType.WAREHOUSE_PARTITION)
+        for table in warehouse_partition_tables:
+            project_data.append([project_name, 'Warehouse Partition Logical Table', table.name])
+    except Exception as e:
+        print(f"Failed to retrieve tables for project {project_name} ({project_id}): {e}")
 
     return project_data
 
