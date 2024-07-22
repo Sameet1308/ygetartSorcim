@@ -1,0 +1,50 @@
+from mstrio.connection import Connection
+from mstrio.utils.entity import Entity
+import pandas as pd
+
+# MicroStrategy connection details
+mstr_base_url = 'https://your-mstr-server/MicroStrategyLibrary/api'
+mstr_username = 'your_username'
+mstr_password = 'your_password'
+mstr_project_name = 'your_project_name'
+dbi_id = 'your_dbi_id'  # ID of the Database Instance
+
+# Connect to MicroStrategy
+conn = Connection(base_url=mstr_base_url, username=mstr_username, password=mstr_password, project_name=mstr_project_name, login_mode=1)
+conn.connect()
+
+# Define the free-form SQL query
+sql_query = """
+SELECT id, name FROM table1
+UNION ALL
+SELECT id, address FROM table2
+"""
+
+# Execute the free-form SQL query using the Database Instance
+def execute_freeform_query(connection, dbi_id, sql_query):
+    response = connection.post(
+        url=f"{connection.base_url}/datasets/query",
+        headers={'X-MSTR-ProjectID': connection.project_id},
+        json={
+            "dbInstanceId": dbi_id,
+            "query": sql_query,
+            "limit": -1  # No limit
+        }
+    )
+    response_json = response.json()
+    if response.ok:
+        data = response_json['result']['data']
+        columns = [col['name'] for col in response_json['result']['definition']['columns']]
+        df = pd.DataFrame(data, columns=columns)
+        return df
+    else:
+        raise Exception(f"Error executing query: {response_json['message']}")
+
+# Fetch the query result into a DataFrame
+df_result = execute_freeform_query(conn, dbi_id, sql_query)
+
+# Display the result
+print(df_result)
+
+# Logout from MicroStrategy
+conn.close()
