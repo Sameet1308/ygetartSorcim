@@ -41,10 +41,13 @@ for project_info in loaded_projects:
         # Get project settings and their descriptions
         settings = project.settings.list_properties(show_description=True)
         
-        # Append each setting to the list
+        # Ensure each setting is treated as a dictionary and append to the list
         for setting in settings:
-            setting['Project Name'] = project_name
-            all_project_settings.append(setting)
+            if isinstance(setting, dict):
+                setting['Project Name'] = project_name
+                all_project_settings.append(setting)
+            else:
+                print(f"Skipping invalid setting format in project {project_name}: {setting}")
     except Exception as e:
         print(f"Skipping project {project_name} due to error: {e}")
         continue
@@ -52,28 +55,32 @@ for project_info in loaded_projects:
 # Create a DataFrame from the consolidated settings list
 all_project_settings_df = pd.DataFrame(all_project_settings)
 
-# Select the hardcoded project to ensure the connection has a project context
-conn.select_project(PROJECT_NAME_FOR_CUBE)
+# Check if DataFrame is empty
+if all_project_settings_df.empty:
+    print("No valid settings data found to create a super cube.")
+else:
+    # Select the hardcoded project to ensure the connection has a project context
+    conn.select_project(PROJECT_NAME_FOR_CUBE)
 
-# Function to create super cube from DataFrame
-def create_super_cube_from_dataframe(df, cube_name, conn):
-    # Define the super cube columns based on the DataFrame columns
-    columns = [{'name': col, 'dataType': 'STRING', 'mapping': col} for col in df.columns]
-    data = df.to_dict(orient='records')
-    
-    # Create the super cube
-    cube = SuperCube(connection=conn, name=cube_name, description='Consolidated project settings')
-    cube.add(data, columns)
-    cube.create()
-    return cube
+    # Function to create super cube from DataFrame
+    def create_super_cube_from_dataframe(df, cube_name, conn):
+        # Define the super cube columns based on the DataFrame columns
+        columns = [{'name': col, 'dataType': 'STRING', 'mapping': col} for col in df.columns]
+        data = df.to_dict(orient='records')
+        
+        # Create the super cube
+        cube = SuperCube(connection=conn, name=cube_name, description='Consolidated project settings')
+        cube.add(data, columns)
+        cube.create()
+        return cube
 
-# Create the super cube from the consolidated DataFrame
-create_super_cube_from_dataframe(all_project_settings_df, SUPER_CUBE_NAME, conn)
+    # Create the super cube from the consolidated DataFrame
+    create_super_cube_from_dataframe(all_project_settings_df, SUPER_CUBE_NAME, conn)
 
-# Save the consolidated settings to a single CSV file
-all_project_settings_df.to_csv(OUTPUT_CSV_FILE, index=False)
-print(f"All project settings saved to {OUTPUT_CSV_FILE}")
+    # Save the consolidated settings to a single CSV file
+    all_project_settings_df.to_csv(OUTPUT_CSV_FILE, index=False)
+    print(f"All project settings saved to {OUTPUT_CSV_FILE}")
 
-print(f"Super cube '{SUPER_CUBE_NAME}' created successfully.")
+    print(f"Super cube '{SUPER_CUBE_NAME}' created successfully.")
 
 print("Script execution completed.")
