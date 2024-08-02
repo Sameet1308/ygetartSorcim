@@ -1,7 +1,8 @@
 """
 This script iterates through all loaded projects in the MicroStrategy server,
 consolidates all project settings along with their descriptions, and
-creates a super cube from the consolidated data.
+creates a super cube from the consolidated data. It also exports the 
+consolidated data to a CSV file.
 
 This script will not work without replacing parameters with real values.
 Its basic goal is to present what can be done with this module and to
@@ -15,6 +16,8 @@ from mstrio.project_objects import SuperCube
 # Define variables which can be later used in a script
 WORKSTATION_DATA = 'your_workstation_data'  # Insert workstation data details
 SUPER_CUBE_NAME = 'All Project Settings Super Cube'  # Name of the super cube
+OUTPUT_CSV_FILE = 'all_project_settings.csv'  # Insert the name of the output CSV file
+PROJECT_NAME_FOR_CUBE = 'xyz'  # Hardcoded project name for creating the super cube
 
 # Establish a connection
 conn = get_connection(workstationData=WORKSTATION_DATA)
@@ -23,8 +26,8 @@ env = Environment(connection=conn)
 # Get list of all loaded projects
 loaded_projects = env.list_loaded_projects()
 
-# Initialize an empty DataFrame to hold all settings
-all_project_settings_df = pd.DataFrame()
+# Initialize an empty list to hold all settings
+all_project_settings = []
 
 # Iterate through each loaded project
 for project_info in loaded_projects:
@@ -38,14 +41,19 @@ for project_info in loaded_projects:
         # Get project settings and their descriptions
         settings = project.settings.list_properties(show_description=True)
         
-        settings_df = pd.DataFrame(settings)
-        settings_df['Project Name'] = project_name  # Add project name to the dataframe
-        
-        # Append to the consolidated DataFrame
-        all_project_settings_df = pd.concat([all_project_settings_df, settings_df], ignore_index=True)
+        # Append each setting to the list
+        for setting in settings:
+            setting['Project Name'] = project_name
+            all_project_settings.append(setting)
     except Exception as e:
         print(f"Skipping project {project_name} due to error: {e}")
         continue
+
+# Create a DataFrame from the consolidated settings list
+all_project_settings_df = pd.DataFrame(all_project_settings)
+
+# Select the hardcoded project to ensure the connection has a project context
+conn.select_project(PROJECT_NAME_FOR_CUBE)
 
 # Function to create super cube from DataFrame
 def create_super_cube_from_dataframe(df, cube_name, conn):
@@ -61,6 +69,10 @@ def create_super_cube_from_dataframe(df, cube_name, conn):
 
 # Create the super cube from the consolidated DataFrame
 create_super_cube_from_dataframe(all_project_settings_df, SUPER_CUBE_NAME, conn)
+
+# Save the consolidated settings to a single CSV file
+all_project_settings_df.to_csv(OUTPUT_CSV_FILE, index=False)
+print(f"All project settings saved to {OUTPUT_CSV_FILE}")
 
 print(f"Super cube '{SUPER_CUBE_NAME}' created successfully.")
 
