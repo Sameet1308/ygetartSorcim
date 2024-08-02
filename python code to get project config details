@@ -43,11 +43,16 @@ for project_info in loaded_projects:
         
         # Ensure each setting is treated as a dictionary and append to the list
         for setting in settings:
-            if isinstance(setting, dict):
-                setting['Project Name'] = project_name
-                all_project_settings.append(setting)
-            else:
-                print(f"Skipping invalid setting format in project {project_name}: {setting}")
+            try:
+                # Make sure setting is a dictionary
+                if isinstance(setting, dict):
+                    setting['Project Name'] = project_name
+                    all_project_settings.append(setting)
+                else:
+                    print(f"Skipping invalid setting format in project {project_name}: {setting}")
+            except Exception as e:
+                print(f"Error processing setting {setting} in project {project_name}: {e}")
+                continue
     except Exception as e:
         print(f"Skipping project {project_name} due to error: {e}")
         continue
