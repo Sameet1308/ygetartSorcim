@@ -1,6 +1,6 @@
 """
 This script iterates through all loaded projects in the MicroStrategy server,
-consolidates all project settings along with their descriptions, and saves
+consolidates all project settings along with their descriptions and types, and saves
 them into a single CSV file.
 
 This script will not work without replacing parameters with real values.
@@ -30,15 +30,30 @@ for project_info in loaded_projects:
     project_name = project_info.name
     print(f"Processing project: {project_name}")
     
-    # Get project object
-    project = Project(connection=conn, name=project_name)
-    
-    # Get project settings as a dataframe with descriptions
-    project_settings_df = project.settings.to_dataframe(show_description=True)
-    project_settings_df['Project Name'] = project_name  # Add project name to the dataframe
-    
-    # Append to the consolidated DataFrame
-    all_project_settings_df = pd.concat([all_project_settings_df, project_settings_df], ignore_index=True)
+    try:
+        # Get project object
+        project = Project(connection=conn, name=project_name)
+        
+        # Get project settings and their descriptions
+        settings = project.settings.list_properties(show_description=True)
+        settings_types = project.settings.setting_types
+        
+        # Merge settings with their types
+        for setting in settings:
+            setting_name = setting['name']
+            if setting_name in settings_types:
+                setting['type'] = settings_types[setting_name].get('type', 'N/A')
+            else:
+                setting['type'] = 'N/A'
+        
+        settings_df = pd.DataFrame(settings)
+        settings_df['Project Name'] = project_name  # Add project name to the dataframe
+        
+        # Append to the consolidated DataFrame
+        all_project_settings_df = pd.concat([all_project_settings_df, settings_df], ignore_index=True)
+    except Exception as e:
+        print(f"Skipping project {project_name} due to error: {e}")
+        continue
 
 # Save the consolidated settings to a single CSV file
 all_project_settings_df.to_csv(OUTPUT_CSV_FILE, index=False)
