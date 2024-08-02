@@ -1,8 +1,7 @@
 """
 This script iterates through all loaded projects in the MicroStrategy server,
 consolidates all project settings along with their descriptions, and
-creates a super cube from the consolidated data. It also exports the 
-consolidated data to a CSV file.
+exports the consolidated data to a CSV file.
 
 This script will not work without replacing parameters with real values.
 Its basic goal is to present what can be done with this module and to
@@ -11,13 +10,10 @@ ease its usage.
 import pandas as pd
 from mstrio.connection import get_connection
 from mstrio.server import Environment, Project
-from mstrio.project_objects import SuperCube
 
 # Define variables which can be later used in a script
 WORKSTATION_DATA = 'your_workstation_data'  # Insert workstation data details
-SUPER_CUBE_NAME = 'All Project Settings Super Cube'  # Name of the super cube
 OUTPUT_CSV_FILE = 'all_project_settings.csv'  # Insert the name of the output CSV file
-PROJECT_NAME_FOR_CUBE = 'xyz'  # Hardcoded project name for creating the super cube
 
 # Establish a connection
 conn = get_connection(workstationData=WORKSTATION_DATA)
@@ -41,18 +37,10 @@ for project_info in loaded_projects:
         # Get project settings and their descriptions
         settings = project.settings.list_properties(show_description=True)
         
-        # Ensure each setting is treated as a dictionary and append to the list
+        # Append project name to each setting and add to the list
         for setting in settings:
-            try:
-                # Make sure setting is a dictionary
-                if isinstance(setting, dict):
-                    setting['Project Name'] = project_name
-                    all_project_settings.append(setting)
-                else:
-                    print(f"Skipping invalid setting format in project {project_name}: {setting}")
-            except Exception as e:
-                print(f"Error processing setting {setting} in project {project_name}: {e}")
-                continue
+            setting['Project Name'] = project_name
+            all_project_settings.append(setting)
     except Exception as e:
         print(f"Skipping project {project_name} due to error: {e}")
         continue
@@ -60,32 +48,8 @@ for project_info in loaded_projects:
 # Create a DataFrame from the consolidated settings list
 all_project_settings_df = pd.DataFrame(all_project_settings)
 
-# Check if DataFrame is empty
-if all_project_settings_df.empty:
-    print("No valid settings data found to create a super cube.")
-else:
-    # Select the hardcoded project to ensure the connection has a project context
-    conn.select_project(PROJECT_NAME_FOR_CUBE)
-
-    # Function to create super cube from DataFrame
-    def create_super_cube_from_dataframe(df, cube_name, conn):
-        # Define the super cube columns based on the DataFrame columns
-        columns = [{'name': col, 'dataType': 'STRING', 'mapping': col} for col in df.columns]
-        data = df.to_dict(orient='records')
-        
-        # Create the super cube
-        cube = SuperCube(connection=conn, name=cube_name, description='Consolidated project settings')
-        cube.add(data, columns)
-        cube.create()
-        return cube
-
-    # Create the super cube from the consolidated DataFrame
-    create_super_cube_from_dataframe(all_project_settings_df, SUPER_CUBE_NAME, conn)
-
-    # Save the consolidated settings to a single CSV file
-    all_project_settings_df.to_csv(OUTPUT_CSV_FILE, index=False)
-    print(f"All project settings saved to {OUTPUT_CSV_FILE}")
-
-    print(f"Super cube '{SUPER_CUBE_NAME}' created successfully.")
+# Save the consolidated settings to a single CSV file
+all_project_settings_df.to_csv(OUTPUT_CSV_FILE, index=False)
+print(f"All project settings saved to {OUTPUT_CSV_FILE}")
 
 print("Script execution completed.")
