@@ -1,106 +1,51 @@
+"""
+This script iterates through all loaded projects in the MicroStrategy server,
+consolidates all project settings along with their descriptions, and saves
+them into a single CSV file.
+
+This script will not work without replacing parameters with real values.
+Its basic goal is to present what can be done with this module and to
+ease its usage.
+"""
 import pandas as pd
-from mstrio.connection import Connection
-from mstrio.project_objects import Project
-from mstrio.modeling.schema.table import list_physical_tables, list_logical_tables, list_tables_prefixes, list_warehouse_tables
-from mstrio.datasources.datasource_instance import list_connected_datasource_instances
-from mstrio.modeling.schema.table import PhysicalTableType
+from mstrio.connection import get_connection
+from mstrio.server import Environment, Project
 
-# Disable warnings
-import warnings
-warnings.filterwarnings("ignore")
+# Define variables which can be later used in a script
+WORKSTATION_DATA = 'your_workstation_data'  # Insert workstation data details
+OUTPUT_CSV_FILE = 'all_project_settings.csv'  # Insert the name of the output CSV file
 
-# Connect to MicroStrategy with SSL verification disabled
-base_url = "your_base_url"  # Replace with your MicroStrategy base URL
-username = "your_username"  # Replace with your MicroStrategy username
-password = "your_password"  # Replace with your MicroStrategy password
-
-try:
-    conn = Connection(base_url=base_url, username=username, password=password, ssl_verify=False)
-    conn.connect()
-except Exception as e:
-    print(f"Failed to connect to MicroStrategy: {e}")
-    exit(1)
-
-# Create an environment using the connection
+# Establish a connection
+conn = get_connection(workstationData=WORKSTATION_DATA)
 env = Environment(connection=conn)
 
-# Get a list of projects
-try:
-    projects = env.list_projects()
-except Exception as e:
-    print(f"Failed to retrieve project list: {e}")
-    exit(1)
+# Get list of all loaded projects
+loaded_projects = env.list_loaded_projects()
 
-# List to store project table details
-project_tables = []
+# Initialize an empty DataFrame to hold all settings
+all_project_settings_df = pd.DataFrame()
 
-# Function to get all types of tables for a given project
-def get_all_tables_for_project(connection, project_id, project_name):
-    project_data = []
-
-    # Switch to the project context
+# Iterate through each loaded project
+for project_info in loaded_projects:
+    project_name = project_info['name']
+    print(f"Processing project: {project_name}")
+    
     try:
-        connection.select_project(project_id=project_id)
+        # Get project object
+        project = Project(connection=conn, name=project_name)
+        
+        # Get project settings as a dataframe with descriptions
+        project_settings_df = project.settings.to_dataframe()
+        project_settings_df['Project Name'] = project_name  # Add project name to the dataframe
+        
+        # Append to the consolidated DataFrame
+        all_project_settings_df = pd.concat([all_project_settings_df, project_settings_df], ignore_index=True)
     except Exception as e:
-        print(f"Failed to switch to project {project_name} ({project_id}): {e}")
-        return project_data
+        print(f"Skipping project {project_name} due to error: {e}")
+        continue
 
-    try:
-        # Get a list of table prefixes
-        table_prefixes = list_tables_prefixes(connection=connection)
-        for prefix in table_prefixes:
-            project_data.append([project_name, 'Table Prefix', prefix])
+# Save the consolidated settings to a single CSV file
+all_project_settings_df.to_csv(OUTPUT_CSV_FILE, index=False)
+print(f"All project settings saved to {OUTPUT_CSV_FILE}")
 
-        # Get a list of physical tables
-        physical_tables = list_physical_tables(connection=connection)
-        for table in physical_tables:
-            project_data.append([project_name, 'Physical Table', table.name])
-
-        # Get a list of logical tables
-        logical_tables = list_logical_tables(connection=connection)
-        for table in logical_tables:
-            project_data.append([project_name, 'Logical Table', table.name])
-
-        # List connected datasource instances
-        connected_datasource_instances = list_connected_datasource_instances(connection=connection)
-        for datasource in connected_datasource_instances:
-            project_data.append([project_name, 'Datasource Instance', datasource.name])
-
-        # List of all available Warehouse Tables
-        all_warehouse_tables = list_warehouse_tables(connection=connection)
-        for table in all_warehouse_tables:
-            project_data.append([project_name, 'Warehouse Table', table.name])
-
-        # List logical tables based on physical tables of type normal
-        normal_tables = list_logical_tables(connection=connection, table_type=PhysicalTableType.NORMAL)
-        for table in normal_tables:
-            project_data.append([project_name, 'Normal Logical Table', table.name])
-
-        # List logical tables based on physical tables of type SQL
-        sql_tables = list_logical_tables(connection=connection, table_type=PhysicalTableType.SQL)
-        for table in sql_tables:
-            project_data.append([project_name, 'SQL Logical Table', table.name])
-
-        # List logical tables based on physical tables of type warehouse_partition
-        warehouse_partition_tables = list_logical_tables(connection=connection, table_type=PhysicalTableType.WAREHOUSE_PARTITION)
-        for table in warehouse_partition_tables:
-            project_data.append([project_name, 'Warehouse Partition Logical Table', table.name])
-    except Exception as e:
-        print(f"Failed to retrieve tables for project {project_name} ({project_id}): {e}")
-
-    return project_data
-
-# Iterate through each project and collect table details
-for project in projects:
-    project_id = project.id  # Accessing the project ID correctly
-    project_name = project.name  # Accessing the project name correctly
-    project_tables.extend(get_all_tables_for_project(conn, project_id, project_name))
-
-# Create a DataFrame from the collected project tables data
-df = pd.DataFrame(project_tables, columns=['Project Name', 'Table Type', 'Table Name'])
-
-# Export the DataFrame to an Excel file
-output_file = 'mstr_projects_tables.xlsx'
-df.to_excel(output_file, index=False)
-
-print(f"Exported table details to {output_file}")
+print("Script execution completed.")
