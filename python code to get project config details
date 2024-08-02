@@ -37,10 +37,16 @@ for project_info in loaded_projects:
         # Get project settings and their descriptions
         settings = project.settings.list_properties(show_description=True)
         
+        # Debugging: Print the structure of the settings
+        print(f"Settings for project {project_name}: {settings}")
+        
         # Append project name to each setting and add to the list
         for setting in settings:
-            setting['Project Name'] = project_name
-            all_project_settings.append(setting)
+            if isinstance(setting, dict):
+                setting['Project Name'] = project_name
+                all_project_settings.append(setting)
+            else:
+                print(f"Skipping invalid setting format in project {project_name}: {setting}")
     except Exception as e:
         print(f"Skipping project {project_name} due to error: {e}")
         continue
