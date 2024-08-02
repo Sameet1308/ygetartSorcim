@@ -19,14 +19,15 @@ OUTPUT_CSV_FILE = 'all_project_settings.csv'  # Insert the name of the output CS
 conn = get_connection(workstationData=WORKSTATION_DATA)
 env = Environment(connection=conn)
 
-# Temporarily hardcoded list of projects
-loaded_projects = ['your_project_name']  # Replace with the actual project names
+# Get list of all loaded projects
+loaded_projects = env.list_loaded_projects()
 
 # Initialize an empty list to hold all settings
 all_project_settings = []
 
 # Iterate through each loaded project
-for project_name in loaded_projects:
+for project_info in loaded_projects:
+    project_name = project_info.name
     print(f"Processing project: {project_name}")
     
     try:
@@ -39,10 +40,10 @@ for project_name in loaded_projects:
         # Flatten the settings and format the data for the DataFrame
         for setting_name, setting_details in settings.items():
             if isinstance(setting_details, dict):
-                setting_value = setting_details.get('value', '')
-                setting_description = setting_details.get('description', '')
+                setting_value = str(setting_details.get('value', ''))
+                setting_description = str(setting_details.get('description', ''))
             else:
-                setting_value = setting_details
+                setting_value = str(setting_details)
                 setting_description = ''
             
             all_project_settings.append({
