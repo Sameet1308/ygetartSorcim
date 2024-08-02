@@ -1,7 +1,7 @@
 """
 This script iterates through all loaded projects in the MicroStrategy server,
-consolidates all project settings along with their descriptions, and saves
-them into a single CSV file.
+consolidates all project settings along with their descriptions and values,
+and saves them into a single CSV file.
 
 This script will not work without replacing parameters with real values.
 Its basic goal is to present what can be done with this module and to
@@ -19,15 +19,14 @@ OUTPUT_CSV_FILE = 'all_project_settings.csv'  # Insert the name of the output CS
 conn = get_connection(workstationData=WORKSTATION_DATA)
 env = Environment(connection=conn)
 
-# Get list of all loaded projects
-loaded_projects = env.list_loaded_projects()
+# Temporarily hardcoded list of projects
+loaded_projects = ['your_project_name']  # Replace with the actual project names
 
 # Initialize an empty list to hold all settings
 all_project_settings = []
 
 # Iterate through each loaded project
-for project_info in loaded_projects:
-    project_name = project_info.name
+for project_name in loaded_projects:
     print(f"Processing project: {project_name}")
     
     try:
@@ -37,18 +36,21 @@ for project_info in loaded_projects:
         # Get project settings and their descriptions
         settings = project.settings.list_properties(show_description=True)
         
-        # Debugging: Print the structure and type of the settings
-        print(f"Settings for project {project_name}: {settings}")
-        print(f"Type of settings for project {project_name}: {type(settings)}")
-        
-        # Append project name to each setting and add to the list
-        for setting in settings:
-            print(f"Type of individual setting: {type(setting)}")
-            if isinstance(setting, dict):
-                setting['Project Name'] = project_name
-                all_project_settings.append(setting)
+        # Flatten the settings and format the data for the DataFrame
+        for setting_name, setting_details in settings.items():
+            if isinstance(setting_details, dict):
+                setting_value = setting_details.get('value', '')
+                setting_description = setting_details.get('description', '')
             else:
-                print(f"Skipping invalid setting format in project {project_name}: {setting}")
+                setting_value = setting_details
+                setting_description = ''
+            
+            all_project_settings.append({
+                "Project Name": project_name,
+                "Setting Name": setting_name,
+                "Setting Value": setting_value,
+                "Setting Description": setting_description
+            })
     except Exception as e:
         print(f"Skipping project {project_name} due to error: {e}")
         continue
@@ -56,8 +58,12 @@ for project_info in loaded_projects:
 # Create a DataFrame from the consolidated settings list
 all_project_settings_df = pd.DataFrame(all_project_settings)
 
-# Save the consolidated settings to a single CSV file
-all_project_settings_df.to_csv(OUTPUT_CSV_FILE, index=False)
-print(f"All project settings saved to {OUTPUT_CSV_FILE}")
+# Ensure the DataFrame is not empty before saving
+if not all_project_settings_df.empty:
+    # Save the consolidated settings to a single CSV file
+    all_project_settings_df.to_csv(OUTPUT_CSV_FILE, index=False)
+    print(f"All project settings saved to {OUTPUT_CSV_FILE}")
+else:
+    print("No valid settings data to save.")
 
 print("Script execution completed.")
