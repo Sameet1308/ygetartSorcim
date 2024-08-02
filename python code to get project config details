@@ -1,7 +1,7 @@
 """
 This script iterates through all loaded projects in the MicroStrategy server,
-consolidates all project settings along with their descriptions, and
-exports the consolidated data to a CSV file.
+consolidates all project settings along with their descriptions, and saves
+them into a single CSV file.
 
 This script will not work without replacing parameters with real values.
 Its basic goal is to present what can be done with this module and to
@@ -37,11 +37,13 @@ for project_info in loaded_projects:
         # Get project settings and their descriptions
         settings = project.settings.list_properties(show_description=True)
         
-        # Debugging: Print the structure of the settings
+        # Debugging: Print the structure and type of the settings
         print(f"Settings for project {project_name}: {settings}")
+        print(f"Type of settings for project {project_name}: {type(settings)}")
         
         # Append project name to each setting and add to the list
         for setting in settings:
+            print(f"Type of individual setting: {type(setting)}")
             if isinstance(setting, dict):
                 setting['Project Name'] = project_name
                 all_project_settings.append(setting)
