@@ -1,0 +1,47 @@
+"""
+This script iterates through all loaded projects in the MicroStrategy server,
+consolidates all project settings along with their descriptions, and saves
+them into a single CSV file.
+
+This script will not work without replacing parameters with real values.
+Its basic goal is to present what can be done with this module and to
+ease its usage.
+"""
+import pandas as pd
+from mstrio.connection import get_connection
+from mstrio.server import Environment, Project
+
+# Define variables which can be later used in a script
+WORKSTATION_DATA = 'your_workstation_data'  # Insert workstation data details
+OUTPUT_CSV_FILE = 'all_project_settings.csv'  # Insert the name of the output CSV file
+
+# Establish a connection
+conn = get_connection(workstationData=WORKSTATION_DATA)
+env = Environment(connection=conn)
+
+# Get list of all loaded projects
+loaded_projects = env.list_loaded_projects()
+
+# Initialize an empty DataFrame to hold all settings
+all_project_settings_df = pd.DataFrame()
+
+# Iterate through each loaded project
+for project_info in loaded_projects:
+    project_name = project_info.name
+    print(f"Processing project: {project_name}")
+    
+    # Get project object
+    project = Project(connection=conn, name=project_name)
+    
+    # Get project settings as a dataframe with descriptions
+    project_settings_df = project.settings.to_dataframe(show_description=True)
+    project_settings_df['Project Name'] = project_name  # Add project name to the dataframe
+    
+    # Append to the consolidated DataFrame
+    all_project_settings_df = pd.concat([all_project_settings_df, project_settings_df], ignore_index=True)
+
+# Save the consolidated settings to a single CSV file
+all_project_settings_df.to_csv(OUTPUT_CSV_FILE, index=False)
+print(f"All project settings saved to {OUTPUT_CSV_FILE}")
+
+print("Script execution completed.")
