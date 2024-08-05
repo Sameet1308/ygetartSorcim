@@ -1,6 +1,10 @@
+import warnings
 from mstrio.project_objects import Cube
 from mstrio.connection import Connection
 import mstrio.server as server
+
+# Disable warnings
+warnings.filterwarnings("ignore")
 
 # Configuration
 BASE_URL = 'https://mstr.example.com/MicroStrategyLibrary'
@@ -12,7 +16,7 @@ DESIRED_PATH = '/desired/path/location'
 # Connect to MicroStrategy
 def connect_to_mstr(base_url, username, password, project_name):
     try:
-        conn = Connection(base_url, username, password, project_name)
+        conn = Connection(base_url, username, password, project_name, ssl_verify=False)
         return conn
     except Exception as e:
         print(f"Failed to connect to MicroStrategy: {e}")
