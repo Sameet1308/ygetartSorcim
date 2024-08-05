@@ -1,0 +1,68 @@
+from mstrio.project_objects import Cube
+from mstrio.connection import Connection
+import mstrio.server as server
+
+# Configuration
+BASE_URL = 'https://mstr.example.com/MicroStrategyLibrary'
+USERNAME = 'your_username'
+PASSWORD = 'your_password'
+PROJECT_NAME = 'your_project_name'
+DESIRED_PATH = '/desired/path/location'
+
+# Connect to MicroStrategy
+def connect_to_mstr(base_url, username, password, project_name):
+    try:
+        conn = Connection(base_url, username, password, project_name)
+        return conn
+    except Exception as e:
+        print(f"Failed to connect to MicroStrategy: {e}")
+        return None
+
+# List cubes per project along with their location
+def list_cubes(conn):
+    try:
+        cubes = Cube.list(connection=conn)
+        cubes_info = []
+        
+        for cube in cubes:
+            cube_info = {
+                'id': cube.id,
+                'name': cube.name,
+                'path': cube.location if hasattr(cube, 'location') else 'Unknown'
+            }
+            cubes_info.append(cube_info)
+        
+        return cubes_info
+    except Exception as e:
+        print(f"Failed to list cubes: {e}")
+        return []
+
+# Unload cubes not in the desired path location
+def unload_cubes(conn, cubes_info, desired_path):
+    for cube in cubes_info:
+        if cube['path'] != desired_path:
+            try:
+                cube_object = Cube(connection=conn, id=cube['id'])
+                cube_object.unload()
+                print(f"Unloaded cube: {cube['name']} from path: {cube['path']}")
+            except Exception as e:
+                print(f"Failed to unload cube {cube['name']}: {e}")
+
+# Main function
+def main():
+    conn = connect_to_mstr(BASE_URL, USERNAME, PASSWORD, PROJECT_NAME)
+    if not conn:
+        return
+
+    cubes_info = list_cubes(conn)
+    if not cubes_info:
+        return
+
+    print("List of Cubes:")
+    for cube in cubes_info:
+        print(f"Cube Name: {cube['name']}, Path: {cube['path']}")
+    
+    unload_cubes(conn, cubes_info, DESIRED_PATH)
+
+if __name__ == "__main__":
+    main()
