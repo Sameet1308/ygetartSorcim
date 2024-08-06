@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Export Dossier to PDF</title>
+    <style>
+        #exportButton {
+            padding: 10px 20px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        #exportButton:hover {
+            background-color: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <button id="exportButton">Export to PDF</button>
+
+    <script>
+        document.getElementById('exportButton').addEventListener('click', function() {
+            exportDossierToPDF();
+        });
+
+        function exportDossierToPDF() {
+            const dossierId = getDossierIdFromURL(); // Dynamically retrieve the dossier ID
+            const baseUrl = window.location.origin; // Use the base URL of the current MSTR environment
+
+            // Fetch session information (like auth token and project ID) from existing session
+            const authToken = mstrApp.sessionState.authToken; // Use the existing session's auth token
+            const projectId = mstrApp.sessionState.projectId; // Use the current project ID
+
+            fetch(`${baseUrl}/MicroStrategyLibrary/api/v2/reports/${dossierId}/export`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-MSTR-AuthToken': authToken,
+                    'X-MSTR-ProjectID': projectId
+                },
+                body: JSON.stringify({
+                    name: 'dossier_export',
+                    format: 'pdf'
+                })
+            })
+            .then(response => response.blob())
+            .then(blob => {
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'dossier.pdf';
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+            })
+            .catch(error => {
+                console.error('Error exporting dossier:', error);
+            });
+        }
+
+        function getDossierIdFromURL() {
+            const urlParams = new URLSearchParams(window.location.search);
+            return urlParams.get('dossierId');
+        }
+    </script>
+</body>
+</html>
