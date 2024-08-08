@@ -1,0 +1,32 @@
+import pandas as pd
+from mstrio.project_objects.user_group import UserGroup
+from mstrio.connection import Connection
+
+# Define the connection parameters
+BASE_URL = "https://your-microstrategy-url/MicroStrategyLibrary/api"
+USERNAME = "your_username"
+PASSWORD = "your_password"
+
+# Establish a connection to the MicroStrategy environment
+conn = Connection(base_url=BASE_URL, username=USERNAME, password=PASSWORD)
+
+# Get a list of all user groups
+user_groups = UserGroup.list(connection=conn)
+
+# Create a list to store user groups and their users
+data = []
+
+# Iterate through each user group and get the list of users
+for group in user_groups:
+    group_users = group.list_members()
+    for user in group_users:
+        data.append({"User Group": group.name, "User": user.username})
+
+# Create a DataFrame from the list
+df = pd.DataFrame(data)
+
+# Export the DataFrame to a CSV file
+csv_file = 'user_groups_users.csv'
+df.to_csv(csv_file, index=False)
+
+print(f"User groups and users have been exported to {csv_file}")
